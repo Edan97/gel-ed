@@ -2,16 +2,16 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=77331b52";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=77331b52";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=77331b52";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=77331b52";
-import { median } from "./signal.js?v=77331b52";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=77331b52";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=77331b52";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=77331b52";
-import { LADDERS } from "./ladders.js?v=77331b52";
-import { drawIcons } from "./icons.js?v=77331b52";
+import { readImage } from "./image.js?v=2ec26083";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=2ec26083";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=2ec26083";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=2ec26083";
+import { median } from "./signal.js?v=2ec26083";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=2ec26083";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=2ec26083";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=2ec26083";
+import { LADDERS } from "./ladders.js?v=2ec26083";
+import { drawIcons } from "./icons.js?v=2ec26083";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -41,7 +41,7 @@ const state = {
   aligns: {},       // running correction per "lane:refLane", cleared when bands are found again
   captionAuto: true, // the caption follows the annotations until the user edits it
   // Method (caption only): western blot with antibodies (preset key or "custom" + text), or SDS-PAGE with a stain
-  method: { type: "western", stain: "Coomassie", antibodies: [{ key: Object.keys(ANTIBODIES)[0], text: "" }] },
+  method: { type: "sds", stain: "Coomassie", antibodies: [{ key: Object.keys(ANTIBODIES)[0], text: "" }] },
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}

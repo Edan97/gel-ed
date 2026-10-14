@@ -59,8 +59,8 @@ behind it.
 Band finding settings: threshold (in multiples of each lane's noise), how much of the
 lane's centre is used, smoothing, and the noise window. Defaults match the Python version.
 
-   **Method** (for the caption): western blot with one or more antibodies (chosen from
-   `js/antibodies.js` or typed in), or SDS-PAGE with its stain (default Coomassie).
+   **Method** (for the caption): SDS-PAGE with its stain (the default: Coomassie), or
+   western blot with one or more antibodies (chosen from `js/antibodies.js` or typed in).
    **Ladder** (under the overlay): the selected ladder's name (editable) and its
    volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
    with the lane number, used on the figure), an annotation and a volume (µL), and one

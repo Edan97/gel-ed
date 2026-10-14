@@ -2,7 +2,7 @@
 // Geometry icons put a square through the same transform the editor uses (amounts
 // exaggerated so the direction is easy to see): dashed = before, solid = after.
 
-import { matrix, outline } from "./transform.js?v=77331b52";
+import { matrix, outline } from "./transform.js?v=2ec26083";
 
 const NS = "http://www.w3.org/2000/svg";
 const SIZE = 15;                       // square side in icon units

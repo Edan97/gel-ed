@@ -1,6 +1,6 @@
 // Ladder band picking and mass calibration.
 
-import { gaussian1d, median } from "./signal.js?v=77331b52";
+import { gaussian1d, median } from "./signal.js?v=2ec26083";
 
 // Monotone piecewise-cubic interpolation, scipy.interpolate.PchipInterpolator's formulas
 // (the Python mass calibration uses it). xs strictly increasing. Returns f(x); outside
