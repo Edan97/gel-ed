@@ -1,10 +1,11 @@
-// gel-ed web app: load → edit (tone, geometry, crop) → lanes → bands → overlay.
+// gel-ed web app: load → edit (tone, geometry; crop set automatically) → lanes → bands → overlay.
 
 import { readImage } from "./image.js";
-import { matrix, warp, outline, cropValid, largestCrop, clampCrop } from "./transform.js";
+import { matrix, warp, frame, outline, cropValid, largestCrop, clampCrop } from "./transform.js";
 import { findBands, findLanes } from "./bands.js";
 import { greyToImageData, drawOverlay, drawDividers } from "./draw.js";
 import { median } from "./signal.js";
+import { drawIcons } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -14,10 +15,11 @@ const LABEL_SPACE = 26; // screen px above the overlay for lane numbers
 
 const state = {
   src: null,        // {grey, w, h, name}
-  warped: null,     // geometry applied
+  box: null,        // frame of the edited image: {x0, y0, W, H} (whole transformed image)
+  warped: null,     // geometry applied, W x H
   edited: null,     // geometry + tone
-  poly: null,       // original image outline after geometry
-  crop: null,       // {x0, y0, x1, y1} in edited-image pixels (inclusive)
+  poly: null,       // original image outline after geometry, in edited-image pixels
+  crop: null,       // {x0, y0, x1, y1} in edited-image pixels (inclusive); automatic, draggable
   invert: false,
   bounds: null,     // lane boundaries in crop columns
   results: null,
@@ -39,6 +41,7 @@ async function load(file) {
     resetEdits(false);
     state.bounds = null;
     $("workspace").hidden = false;
+    $("edit-stage").style.setProperty("--ar", `${w} / ${h}`); // display box keeps the original's shape
     $("drop").classList.add("compact");
     const light = median(grey.filter((_, i) => i % 97 === 0)) >= 0.5;
     setStatus(`${file.name}: ${w} × ${h} px.` +
@@ -60,6 +63,7 @@ function resetEdits(rerun = true) {
   state.invert = false;
   $("invert").setAttribute("aria-pressed", "false");
   state.crop = null;
+  state.box = null;
   showValues();
   if (rerun) applyGeometry();
 }
@@ -67,9 +71,18 @@ function resetEdits(rerun = true) {
 function applyGeometry() {
   const { grey, w, h } = state.src;
   const m = matrix(w, h, geometry());
-  state.warped = warp(grey, w, h, m);
-  state.poly = outline(w, h, m);
-  if (!state.crop || !cropValid(state.crop, state.poly, w, h)) state.crop = largestCrop(state.poly, w, h);
+  const box = frame(w, h, m);
+  if (state.crop && state.box) { // keep the crop on the same part of the image as the frame moves
+    const dx = state.box.x0 - box.x0, dy = state.box.y0 - box.y0;
+    state.crop = { x0: state.crop.x0 + dx, x1: state.crop.x1 + dx, y0: state.crop.y0 + dy, y1: state.crop.y1 + dy };
+  }
+  state.box = box;
+  state.warped = warp(grey, w, h, m, box);
+  state.poly = outline(w, h, m).map(([x, y]) => [x - box.x0, y - box.y0]);
+  if (!state.crop || !cropValid(state.crop, state.poly, box.W, box.H)) {
+    const cx = (w - 1) / 2 - box.x0, cy = (h - 1) / 2 - box.y0;
+    state.crop = largestCrop(state.poly, box.W, box.H, cx, cy, (w - 1) / 2, (h - 1) / 2);
+  }
   applyTone();
 }
 
@@ -92,7 +105,7 @@ const editCanvas = $("edit-canvas");
 let drag = null;
 
 function drawEditor() {
-  const { w, h } = state.src;
+  const { W: w, H: h } = state.box;
   editCanvas.width = w;
   editCanvas.height = h;
   const ctx = editCanvas.getContext("2d");
@@ -153,7 +166,7 @@ editCanvas.addEventListener("pointermove", (e) => {
     ? { x0: c.x0 + dx, x1: c.x1 + dx, y0: c.y0 + dy, y1: c.y1 + dy }
     : { x0: c.x0 + (drag.handle.x0 ? dx : 0), x1: c.x1 + (drag.handle.x1 ? dx : 0),
         y0: c.y0 + (drag.handle.y0 ? dy : 0), y1: c.y1 + (drag.handle.y1 ? dy : 0) };
-  const { w, h } = state.src;
+  const { W: w, H: h } = state.box;
   const next = clampCrop(state.crop, want, state.poly, w, h);
   state.crop = { x0: Math.ceil(next.x0), y0: Math.ceil(next.y0), x1: Math.floor(next.x1), y1: Math.floor(next.y1) };
   if (!cropValid(state.crop, state.poly, w, h)) state.crop = drag.crop;
@@ -177,7 +190,7 @@ function bandOptions() {
 }
 
 function cropImage() {
-  const { w } = state.src;
+  const w = state.box.W;
   const c = state.crop;
   const cw = c.x1 - c.x0 + 1, ch = c.y1 - c.y0 + 1;
   const grey = new Float64Array(cw * ch);
@@ -302,13 +315,6 @@ $("invert").addEventListener("click", () => {
   applyTone();
 });
 $("reset-edits").addEventListener("click", () => resetEdits());
-$("crop-max").addEventListener("click", () => {
-  const { w, h } = state.src;
-  state.crop = largestCrop(state.poly, w, h);
-  state.bounds = null;
-  drawEditor();
-  analyse();
-});
 $("lanes").addEventListener("change", () => { state.bounds = null; analyse(); });
 $("find-lanes").addEventListener("click", () => { state.bounds = null; analyse(); });
 window.addEventListener("resize", () => { if (state.src) { drawEditor(); drawResults(); } });
@@ -326,6 +332,7 @@ drop.addEventListener("drop", (e) => {
   if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]);
 });
 showValues();
+drawIcons();
 
 // ?image=<url> loads an image straight away (same-origin; handy for local testing)
 const param = new URLSearchParams(location.search).get("image");

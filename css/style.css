@@ -105,7 +105,38 @@ legend { font-weight: 600; padding: 0 0.25rem; }
 
 label.slider { display: block; margin: 0.35rem 0 0.6rem; font-size: 0.92rem; }
 label.slider output { float: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-label.slider input { display: block; width: 100%; margin-top: 0.2rem; accent-color: var(--accent); }
+label.slider > input { display: block; width: 100%; margin-top: 0.2rem; }
+.slider-row { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.15rem; }
+.slider-row input { flex: 1; min-width: 0; }
+
+/* Sliders: an empty track (no fill from the left) and a round thumb. Edit sliders start
+   in the middle, so they get a tick there. */
+input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; margin: 0; }
+input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--hairline); }
+input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--hairline); }
+input[type="range"]::-moz-range-progress { background: transparent; }
+input[type="range"].centred::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, transparent calc(50% - 1px), var(--text-muted) calc(50% - 1px),
+              var(--text-muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--hairline);
+}
+input[type="range"].centred::-moz-range-track {
+  background: linear-gradient(to right, transparent calc(50% - 1px), var(--text-muted) calc(50% - 1px),
+              var(--text-muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--hairline);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); cursor: pointer;
+}
+input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.icon { flex: none; display: inline-flex; line-height: 0; }
+.icon .before { fill: none; stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 2 1.5; }
+.icon .after { fill: color-mix(in srgb, var(--accent) 18%, transparent); stroke: var(--accent); stroke-width: 1.4; stroke-linejoin: round; }
+.icon .frame { stroke: var(--text-muted); stroke-width: 1; }
 label.row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.3rem 0 0.6rem; }
 input[type="number"] {
   font: inherit; color: inherit; background: var(--page);
@@ -115,6 +146,14 @@ input[type="number"] {
 
 .view { min-width: 0; }
 canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touch-action: none; }
+/* Editor display box: fixed to the original image's shape; the edited image (which grows
+   when rotated or skewed) is scaled down to fit inside it, never cut off. */
+.stage {
+  aspect-ratio: var(--ar, 2 / 1);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--page); border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.stage canvas { display: block; max-width: 100%; max-height: 100%; min-width: 0; min-height: 0; touch-action: none; }
 
 .legend-key { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.9; margin: 0; }
 .key { display: inline-block; vertical-align: middle; margin: 0 0.3rem 0 0.6rem; }

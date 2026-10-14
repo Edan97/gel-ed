@@ -33,9 +33,17 @@
             <fieldset>
               <legend>Tone</legend>
               <label class="slider">Brightness <output data-for="brightness"></output>
-                <input type="range" id="brightness" min="-0.5" max="0.5" step="0.01" value="0"></label>
+                <span class="slider-row">
+                  <span class="icon" data-icon="brightness" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="brightness" min="-0.5" max="0.5" step="0.01" value="0">
+                  <span class="icon" data-icon="brightness" data-end="1" aria-hidden="true"></span>
+                </span></label>
               <label class="slider">Contrast <output data-for="contrast"></output>
-                <input type="range" id="contrast" min="-0.9" max="0.9" step="0.01" value="0"></label>
+                <span class="slider-row">
+                  <span class="icon" data-icon="contrast" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="contrast" min="-0.9" max="0.9" step="0.01" value="0">
+                  <span class="icon" data-icon="contrast" data-end="1" aria-hidden="true"></span>
+                </span></label>
               <button type="button" id="invert" class="btn" aria-pressed="false">Invert</button>
               <p class="hint">Band finding expects <strong>dark bands on a light background</strong>.
                 Invert white-on-black images before reading the results.</p>
@@ -43,27 +51,38 @@
             <fieldset>
               <legend>Geometry</legend>
               <label class="slider">Rotation <output data-for="rotation"></output>
-                <input type="range" id="rotation" min="-15" max="15" step="0.1" value="0"></label>
+                <span class="slider-row">
+                  <span class="icon" data-icon="rotation" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="rotation" min="-15" max="15" step="0.1" value="0">
+                  <span class="icon" data-icon="rotation" data-end="1" aria-hidden="true"></span>
+                </span></label>
               <label class="slider">Skew <output data-for="skew"></output>
-                <input type="range" id="skew" min="-0.2" max="0.2" step="0.002" value="0"></label>
+                <span class="slider-row">
+                  <span class="icon" data-icon="skew" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="skew" min="-0.2" max="0.2" step="0.002" value="0">
+                  <span class="icon" data-icon="skew" data-end="1" aria-hidden="true"></span>
+                </span></label>
               <label class="slider">Distort <output data-for="distort"></output>
-                <input type="range" id="distort" min="-0.2" max="0.2" step="0.002" value="0"></label>
+                <span class="slider-row">
+                  <span class="icon" data-icon="distort" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="distort" min="-0.2" max="0.2" step="0.002" value="0">
+                  <span class="icon" data-icon="distort" data-end="1" aria-hidden="true"></span>
+                </span></label>
               <label class="slider">Perspective <output data-for="perspective"></output>
-                <input type="range" id="perspective" min="-1" max="1" step="0.01" value="0"></label>
-              <p class="hint">Skew slides rows sideways (straightens leaning lanes). Distort slides columns up and
-                down (levels bands that slope across the gel). Perspective narrows the top or bottom.
+                <span class="slider-row">
+                  <span class="icon" data-icon="perspective" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="perspective" min="-1" max="1" step="0.01" value="0">
+                  <span class="icon" data-icon="perspective" data-end="1" aria-hidden="true"></span>
+                </span></label>
+              <p class="hint">The pictures show what each end of a slider does to the image (dashed: before).
                 Double-click a slider to reset it.</p>
-            </fieldset>
-            <fieldset>
-              <legend>Crop</legend>
-              <p class="hint">Drag the rectangle or its corners and edges. It can't include any area outside the
-                original image.</p>
-              <button type="button" id="crop-max" class="btn">Largest crop</button>
             </fieldset>
             <button type="button" id="reset-edits" class="btn">Reset all edits</button>
           </div>
           <div class="view">
-            <canvas id="edit-canvas" class="gel"></canvas>
+            <div id="edit-stage" class="stage"><canvas id="edit-canvas"></canvas></div>
+            <p class="hint">The highlighted area is what's analysed: the largest rectangle with no blank corners.
+              Drag it, or its corners and edges, to trim it further (e.g. to leave out labels above the lanes).</p>
           </div>
         </div>
       </details>

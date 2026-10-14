@@ -2,19 +2,16 @@
 // (port of plot_profiles_on_gel in scoping/band_peaks.py: lines and markers only).
 
 export const COLOURS = { profile: "#2a78d6", peak: "#d62a2a", saturated: "#000000", shoulder: "#e8730c",
-                         lane: "#1f4e8c", empty: [190, 190, 190] };
+                         lane: "#1f4e8c" };
 
 export function greyToImageData(ctx, grey, w, h) {
   const img = ctx.createImageData(w, h);
   const d = img.data;
   for (let i = 0; i < w * h; i++) {
     const v = grey[i];
-    if (Number.isNaN(v)) {
-      d[i * 4] = COLOURS.empty[0]; d[i * 4 + 1] = COLOURS.empty[1]; d[i * 4 + 2] = COLOURS.empty[2];
-    } else {
-      const b = Math.round(Math.min(Math.max(v, 0), 1) * 255);
-      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = b;
-    }
+    if (Number.isNaN(v)) { d[i * 4 + 3] = 0; continue; } // outside the original image: transparent
+    const b = Math.round(Math.min(Math.max(v, 0), 1) * 255);
+    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = b;
     d[i * 4 + 3] = 255;
   }
   return img;
