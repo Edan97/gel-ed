@@ -6,4 +6,12 @@ export const LADDERS = {
     name: "MagicMark™ XP Western Protein Standard",
     kda: [220, 120, 100, 80, 60, 50, 40, 30, 20],
   },
+  "pageruler-plus": {
+    name: "PageRuler™ Plus Prestained Protein Ladder, 10 to 250 kDa",
+    kda: [250, 130, 100, 70, 55, 35, 25, 15, 10],
+  },
+  "novex-sharp": {
+    name: "Novex™ Sharp Pre-stained Protein Standard",
+    kda: [260, 160, 110, 80, 60, 50, 40, 30, 20, 15, 10, 3.5],
+  },
 };
