@@ -20,7 +20,7 @@ export function greyToImageData(ctx, grey, w, h) {
 // Overlay on a canvas already holding the gel, drawn `top` pixels below the canvas top.
 // px = size of one screen pixel in canvas pixels, so lines stay visible when scaled down.
 // showProfiles: draw each lane's profile with peaks, saturated peaks and shoulders marked;
-// otherwise just a hollow red circle on every band found, at the centre of its lane.
+// otherwise just a hollow red circle on every band found, at the band's middle (b.x).
 export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false) {
   ctx.save();
   ctx.lineJoin = "round";
@@ -31,7 +31,7 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false) 
       ctx.lineWidth = 1.8 * px;
       for (const b of results[li].bands) {
         ctx.beginPath();
-        ctx.arc((start + end) / 2, top + b.y, 6 * px, 0, 2 * Math.PI);
+        ctx.arc(b.x ?? (start + end) / 2, top + b.y, 6 * px, 0, 2 * Math.PI); // at the band's middle
         ctx.stroke();
       }
       return;

@@ -2,13 +2,13 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=181cadd8";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=181cadd8";
-import { bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=181cadd8";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=181cadd8";
-import { median } from "./signal.js?v=181cadd8";
-import { LADDERS } from "./ladders.js?v=181cadd8";
-import { drawIcons } from "./icons.js?v=181cadd8";
+import { readImage } from "./image.js?v=d9d82bb5";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=d9d82bb5";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=d9d82bb5";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=d9d82bb5";
+import { median } from "./signal.js?v=d9d82bb5";
+import { LADDERS } from "./ladders.js?v=d9d82bb5";
+import { drawIcons } from "./icons.js?v=d9d82bb5";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -248,6 +248,9 @@ function laneProfiles() {
 function computeBands() {
   const opts = bandOptions();
   state.results = laneProfiles().map((p) => bandsFromProfile(p.mean, p.black, opts));
+  // each band's horizontal middle (where it's marked), measured on the edited image
+  const { grey, w, h } = state.cropImg;
+  lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) => { b.x = bandCentre(grey, w, h, s, e, b.y); }));
 }
 
 let pending = false;
@@ -377,10 +380,10 @@ $("dl-image").addEventListener("click", () => {
 $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
   const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
-  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "kind", "saturated", "snr", "read_from",
+  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "col", "kind", "saturated", "snr", "read_from",
                  ...GEOMETRY, ...TONE, "invert"]];
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) =>
-    rows.push([i + 1, s, e - 1, b.y, b.kind, b.saturated, b.snr.toFixed(1), $("source").value,
+    rows.push([i + 1, s, e - 1, b.y, b.x.toFixed(1), b.kind, b.saturated, b.snr.toFixed(1), $("source").value,
                ...edits, state.invert])));
   save(new Blob([rows.map((r) => r.join(",")).join("\n") + "\n"], { type: "text/csv" }), `${state.src.name}_bands.csv`);
 });

@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=181cadd8";
+import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=d9d82bb5";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -127,6 +127,34 @@ export function profilesFromOriginal(src, w, h, m, box, rect, bounds, core, satL
     mean: s.map((t, y) => (cnt[i][y] ? t / cnt[i][y] : NaN)),
     black: blk[i].map((t, y) => (cnt[i][y] ? t / cnt[i][y] : 0)),
   }));
+}
+
+// Horizontal middle of a band at row y in lane columns [start, end): darkness per column,
+// averaged over rows y-2..y+2 and lightly smoothed, then the outermost columns at least
+// halfway from the lane's palest to its darkest column; the band's middle is halfway
+// between them (as edges() in scoping/ladder_centreline.py). Falls back to the lane's
+// middle if the band has no measurable width.
+export function bandCentre(img, w, h, start, end, y) {
+  const n = end - start;
+  const col = new Float64Array(n);
+  for (let x = 0; x < n; x++) {
+    let s = 0, k = 0;
+    for (let r = Math.max(0, y - 2); r <= Math.min(h - 1, y + 2); r++) {
+      const v = img[r * w + start + x];
+      if (!Number.isNaN(v)) { s += 1 - v; k++; }
+    }
+    col[x] = k ? s / k : NaN;
+  }
+  const valid = col.filter((v) => !Number.isNaN(v));
+  if (valid.length < 3) return (start + end) / 2;
+  const fill = Math.min(...valid);
+  const sm = gaussian1d(col.map((v) => (Number.isNaN(v) ? fill : v)), 2);
+  const lo = Math.min(...sm), hi = Math.max(...sm);
+  if (!(hi > lo)) return (start + end) / 2;
+  const half = lo + 0.5 * (hi - lo);
+  let left = -1, right = -1;
+  for (let x = 0; x < n; x++) if (sm[x] >= half) { if (left < 0) left = x; right = x; }
+  return start + (left + right) / 2;
 }
 
 // Mean darkness down each column, ignoring blank (NaN) pixels; blank columns count as pale.

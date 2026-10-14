@@ -28,7 +28,8 @@ behind it.
    that many. Lanes are placed at the clearest gaps with widths kept regular; drag the
    dashed dividers to adjust.
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
-   Each band found is marked with a hollow red circle; **Show profiles** (off by default,
+   Each band found is marked with a hollow red circle at the band's middle (halfway
+   between its edges, measured at half its darkness); **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
    shoulders marked. Profiles are read from the **edited image** by default; *original
    pixels* places each pixel of the loaded image through the edits and counts it once,
