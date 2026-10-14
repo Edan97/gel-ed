@@ -33,6 +33,8 @@ behind it.
    shoulders marked. Profiles are read from the **edited image** by default; *original
    pixels* places each pixel of the loaded image through the edits and counts it once,
    never blended. The edit settings are written into every row of the bands CSV.
+   **Ladders**: one card per ladder on the gel (add or remove cards); each card's
+   dropdown says which ladder it is. Not yet used by the analysis.
    Each lane's profile (mean darkness down its central columns) is drawn on the gel with
    the bands found in it: peaks (red), saturated peaks (black) and shoulders (orange:
    bands merged into a neighbour). Download the overlay, the edited image or a CSV of
@@ -50,6 +52,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/signal.js` | Gaussian smoothing, peak finding etc. with scipy's definitions |
 | `js/transform.js` | Rotation/skew/distort/perspective and the crop rule |
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
+| `js/ladders.js` | The ladders the page knows (name and sizes); add new ones here |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |
 | `tests/lanes.html` | Lane counting on the samples (gel_02 has 13 lanes) |

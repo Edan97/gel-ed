@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=974cc2d4">
-  <script type="module" src="js/app.js?v=974cc2d4"></script>
+  <link rel="stylesheet" href="css/style.css?v=181cadd8">
+  <script type="module" src="js/app.js?v=181cadd8"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="974cc2d4">version 6</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="181cadd8">version 7</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -102,6 +102,21 @@
                 straighten the gel first, as tilted lanes blur the gaps. Typing a number places exactly that many.
                 Drag the dashed dividers to adjust.</p>
             </fieldset>
+            <fieldset>
+              <legend>Ladders</legend>
+              <div id="ladder-cards" class="ladder-cards"></div>
+              <button type="button" id="add-ladder" class="btn">Add ladder</button>
+            </fieldset>
+            <template id="ladder-card">
+              <div class="ladder-card">
+                <div class="ladder-head">
+                  <strong class="ladder-title"></strong>
+                  <button type="button" class="link ladder-remove">Remove</button>
+                </div>
+                <select class="ladder-type"></select>
+                <p class="hint ladder-sizes"></p>
+              </div>
+            </template>
             <fieldset>
               <legend>Band finding</legend>
               <label class="row">Read profiles from

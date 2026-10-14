@@ -2,12 +2,13 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=974cc2d4";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=974cc2d4";
-import { bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=974cc2d4";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=974cc2d4";
-import { median } from "./signal.js?v=974cc2d4";
-import { drawIcons } from "./icons.js?v=974cc2d4";
+import { readImage } from "./image.js?v=181cadd8";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=181cadd8";
+import { bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=181cadd8";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=181cadd8";
+import { median } from "./signal.js?v=181cadd8";
+import { LADDERS } from "./ladders.js?v=181cadd8";
+import { drawIcons } from "./icons.js?v=181cadd8";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -27,6 +28,7 @@ const state = {
   bounds: null,     // lane boundaries in crop columns
   countLanes: true, // next analysis estimates the number of lanes (on load and "Find lanes")
   laneNote: "",
+  ladders: [],      // one {type} per ladder card; type is a key of LADDERS
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -319,6 +321,36 @@ overlayCanvas.addEventListener("pointerup", () => {
   laneDrag = null;
   drawResults();
 });
+
+// ---------- ladders ----------
+
+// One card per ladder on the gel; its dropdown says which ladder it is (LADDERS).
+function drawLadderCards() {
+  const list = $("ladder-cards");
+  list.replaceChildren();
+  state.ladders.forEach((ladder, i) => {
+    const card = $("ladder-card").content.firstElementChild.cloneNode(true);
+    card.querySelector(".ladder-title").textContent = `Ladder ${i + 1}`;
+    const select = card.querySelector(".ladder-type");
+    for (const [key, { name }] of Object.entries(LADDERS)) select.add(new Option(name, key));
+    select.value = ladder.type;
+    const sizes = () => { card.querySelector(".ladder-sizes").textContent = `${LADDERS[ladder.type].kda.join(", ")} kDa`; };
+    sizes();
+    select.addEventListener("change", () => { ladder.type = select.value; sizes(); });
+    card.querySelector(".ladder-remove").addEventListener("click", () => {
+      state.ladders.splice(i, 1);
+      drawLadderCards();
+    });
+    list.append(card);
+  });
+}
+
+$("add-ladder").addEventListener("click", () => {
+  state.ladders.push({ type: Object.keys(LADDERS)[0] });
+  drawLadderCards();
+});
+state.ladders.push({ type: Object.keys(LADDERS)[0] }); // most gels have one ladder
+drawLadderCards();
 
 // ---------- downloads ----------
 

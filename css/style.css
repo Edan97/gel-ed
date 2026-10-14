@@ -148,6 +148,10 @@ input[type="number"] {
   border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.4rem; width: 5rem;
 }
 .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.ladder-cards { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.3rem 0 0.6rem; }
+.ladder-card { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem; background: var(--page); }
+.ladder-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.35rem; }
+.ladder-type { width: 100%; }
 
 .view { min-width: 0; }
 canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touch-action: none; }
