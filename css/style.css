@@ -40,6 +40,7 @@ h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
 
 .top { padding: 1.5rem 2rem 1rem; max-width: 1600px; margin: 0 auto; }
 .lede { margin: 0.25rem 0 0; color: var(--text-secondary); }
+.version { font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-left: 0.4rem; }
 main { max-width: 1600px; margin: 0 auto; padding: 0 2rem 2rem; }
 
 .card {

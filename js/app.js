@@ -1,11 +1,11 @@
 // gel-ed web app: load → edit (tone, geometry; crop set automatically) → lanes → bands → overlay.
 
-import { readImage } from "./image.js";
-import { matrix, warp, frame, outline, cropValid, largestCrop, clampCrop } from "./transform.js";
-import { findBands, findLanes } from "./bands.js";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js";
-import { median } from "./signal.js";
-import { drawIcons } from "./icons.js";
+import { readImage } from "./image.js?v=eaa84c3f";
+import { matrix, warp, frame, outline, cropValid, largestCrop, clampCrop } from "./transform.js?v=eaa84c3f";
+import { findBands, findLanes } from "./bands.js?v=eaa84c3f";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=eaa84c3f";
+import { median } from "./signal.js?v=eaa84c3f";
+import { drawIcons } from "./icons.js?v=eaa84c3f";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];

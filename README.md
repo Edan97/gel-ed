@@ -43,6 +43,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |
+| `tools/stamp_version.py` | Version stamps and counter for the web page (run before committing web changes) |
 | `gel_ed/load.py` | Python loader: any format to 16-bit greyscale |
 | `scoping/` | Python scoping work: band finding, lane centre-lines, masses with uncertainty. Write-up in [`scoping/REPORT.md`](scoping/REPORT.md), running log in [`scoping/NOTES.md`](scoping/NOTES.md) |
 
@@ -54,6 +55,14 @@ ES modules don't load from `file://`, so serve the folder:
 python3 -m http.server
 # open http://localhost:8000
 ```
+
+## Updating the web page
+
+Run `python tools/stamp_version.py` before committing changes to `index.html`, `css/` or
+`js/`. It adds a content-based version to every file reference, so browsers load the new
+files instead of cached ones, and counts the version shown next to the title
+(`tools/version.json`). If an old version still shows, a hard refresh (Cmd+Shift+R)
+fetches everything again.
 
 ## Python scoping work
 
