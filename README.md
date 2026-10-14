@@ -84,6 +84,12 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
    method, the ladder and lane annotations (label, annotation and volume where filled in) and the
    groups; it follows them until edited (Regenerate starts again) and can be copied.
 
+**Session log** (Download box): a timestamped record of what the page and the user
+did (image name and size, edits, lane count and dividers, bands found per lane, ladder
+picks and drags, marked bands with masses, running-correction matches, errors), for
+reporting problems. It stays in the browser until downloaded; no image data or typed
+text goes in it.
+
 ## Repository layout
 
 | Path | What |
@@ -96,6 +102,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/calibrate.js` | Ladder band picking (solidity) and the mass calibration (PCHIP, scipy's formulas) |
 | `js/running.js` | Correction for lanes running differently (port of `scoping/band_masses.py`) |
 | `js/antibodies.js` | Antibodies offered for western blots (used in the caption); add new ones here |
+| `js/log.js` | Session log (in memory; downloaded on request) |
 | `js/ladders.js` | The ladders the page knows (name and sizes); add new ones here |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |

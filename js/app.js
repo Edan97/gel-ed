@@ -2,16 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=2ec26083";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=2ec26083";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=2ec26083";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=2ec26083";
-import { median } from "./signal.js?v=2ec26083";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=2ec26083";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=2ec26083";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=2ec26083";
-import { LADDERS } from "./ladders.js?v=2ec26083";
-import { drawIcons } from "./icons.js?v=2ec26083";
+import { readImage } from "./image.js?v=2cf6f254";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=2cf6f254";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=2cf6f254";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=2cf6f254";
+import { median } from "./signal.js?v=2cf6f254";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=2cf6f254";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=2cf6f254";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=2cf6f254";
+import { log, logOnChange, logText } from "./log.js?v=2cf6f254";
+import { LADDERS } from "./ladders.js?v=2cf6f254";
+import { drawIcons } from "./icons.js?v=2cf6f254";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -66,11 +67,13 @@ async function load(file) {
     $("edit-stage").style.setProperty("--ar", `${w} / ${h}`); // display box keeps the original's shape
     $("drop").classList.add("compact");
     const light = median(grey.filter((_, i) => i % 97 === 0)) >= 0.5;
+    log("load", { name: file.name, type: file.type, bytes: file.size, w, h, lightBackground: light });
     setStatus(`${file.name}: ${w} × ${h} px.` +
       (light ? "" : " This looks like light bands on a dark background: press Invert before reading bands."));
     applyGeometry();
   } catch (err) {
     console.error(err);
+    log("load-failed", { name: file.name, type: file.type, bytes: file.size, message: err.message });
     setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
   }
 }
@@ -209,6 +212,7 @@ editCanvas.addEventListener("pointerup", () => {
   if (!drag) return;
   drag = null;
   state.cropUser = true;
+  log("crop", { area: state.crop, frame: state.box && { W: state.box.W, H: state.box.H } });
   state.bounds = null; // area changed: place lanes again
   resetLadders();
   analyse();
@@ -340,6 +344,10 @@ function assignLadders() {
                     y0: m[0].y, y1: m[m.length - 1].y, kMax: m[0].kda, kMin: m[m.length - 1].kda };
     }
   }
+  state.ladders.forEach((lad, i) => logOnChange(`ladder-${i + 1}`, {
+    type: lad.type, lane: lad.lane, movedByHand: lad.manual, note: lad.note,
+    bands: lad.markers.map((q) => `${q.y}:${q.kda}${q.estimated ? "(est)" : ""}`),
+  }));
   // markers to draw, per lane
   state.marks = lanes.map(() => []);
   state.ladders.forEach((lad, li) => {
@@ -368,6 +376,8 @@ function assignLadders() {
       a.sigma = alignmentSigma(me.bands, ref.bands, a);
       a.refLane = refLane;
       state.aligns[key] = a;
+      log("running-correction", { lane: j + 1, refLane, shift: a.shift, stretch: a.stretch, corr: +a.corr.toFixed(3),
+                                  leftoverRows: a.sigma === null ? null : +a.sigma.toFixed(2), ok: a.ok });
     }
     return state.aligns[key];
   };
@@ -426,7 +436,8 @@ function clickBand(p) {
   const near = free.sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
   if (near !== undefined && Math.abs(near - y) <= 8 * p.px) picks.push({ y: near, created: false });
   else if (!picks.some((q) => Math.abs(q.y - y) <= 2)) picks.push({ y, created: true });
-  else return;
+  else { log("click-ignored", { lane: lane + 1, row: y, reason: "already marked" }); return; }
+  log("mark", { lane: lane + 1, clickedRow: y, row: picks[picks.length - 1].y, created: picks[picks.length - 1].created });
   assignLadders();
   drawResults();
 }
@@ -447,6 +458,7 @@ function analyse() {
     const { grey, w, h } = state.cropImg;
     if (state.countLanes) {
       const est = countLanes(grey, w, h);
+      log("lane-count", { n: est.n, pitch: Math.round(est.pitch), gaps: est.gaps });
       $("lanes").value = Math.max(1, Math.min(60, est.n));
       state.laneNote = `Found ${est.n} lanes (typical lane ${Math.round(est.pitch)} px wide). `;
       state.countLanes = false;
@@ -455,6 +467,12 @@ function analyse() {
     const n = Math.max(1, Math.min(60, parseInt($("lanes").value, 10) || 1));
     if (!state.bounds || state.bounds.length !== n + 1 || state.bounds[n] !== w) state.bounds = findLanes(grey, w, h, n);
     computeBands();
+    logOnChange("analysis", {
+      area: { w, h }, geometry: geometry(), source: $("source").value, settings: bandOptions(),
+      bounds: state.bounds.map(Math.round),
+      bandsPerLane: state.results.map((r) => r.bands.length),
+      noisePerLane: state.results.map((r) => +r.noise.toPrecision(3)),
+    });
     drawResults();
   }, 0);
 }
@@ -511,6 +529,7 @@ overlayCanvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   const picks = state.picks[hit.lane];
   picks.splice(picks.indexOf(hit.mark.ref), 1);
+  log("delete", { lane: hit.lane + 1, row: hit.mark.y, name: hit.mark.name });
   assignLadders();
   drawResults();
 });
@@ -582,7 +601,9 @@ overlayCanvas.addEventListener("pointerup", (e) => {
     const { y, snapped } = snapRow(lane, dropped, 15 * p.px);
     if (kind === "pick") {
       const picks = state.picks[lane], me = mark.ref;
-      if (picks.some((q) => q !== me && Math.abs(q.y - y) <= 2)) picks.splice(picks.indexOf(me), 1);
+      const merged = picks.some((q) => q !== me && Math.abs(q.y - y) <= 2);
+      log("move-band", { lane: lane + 1, from: me.y, droppedAt: dropped, to: y, snapped, merged });
+      if (merged) picks.splice(picks.indexOf(me), 1);
       else { me.y = y; me.created = !snapped; }
       assignLadders();
       drawResults();
@@ -592,6 +613,8 @@ overlayCanvas.addEventListener("pointerup", (e) => {
     const me = lad.markers[mark.i];
     delete me.estimated;
     const other = lad.markers.find((q) => q !== me && Math.abs(q.y - y) <= 2);
+    log("move-ladder-band", { ladder: mark.ladder + 1, kda: me.kda, from: me.y, droppedAt: dropped, to: y, snapped,
+                              swappedWith: other ? other.kda : null });
     if (other) other.y = me.y;
     me.y = y;
     lad.manual = true;
@@ -600,6 +623,7 @@ overlayCanvas.addEventListener("pointerup", (e) => {
     return;
   }
   if (laneDrag === null) return;
+  log("lane-divider", { divider: laneDrag, x: state.bounds[laneDrag], bounds: state.bounds.map(Math.round) });
   laneDrag = null;
   drawResults();
 });
@@ -623,8 +647,8 @@ function drawLadderCards() {
     laneSelect.value = String(Math.min(ladder.lane, nLanes));
     card.querySelector(".ladder-note").textContent = ladder.note || "";
     const changed = () => { ladder.manual = false; ladder.markers = null; if (state.results) { assignLadders(); drawResults(); } };
-    select.addEventListener("change", () => { ladder.type = select.value; changed(); drawLadderCards(); });
-    laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); changed(); });
+    select.addEventListener("change", () => { ladder.type = select.value; log("ladder-type", { ladder: i + 1, type: ladder.type }); changed(); drawLadderCards(); });
+    laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); log("ladder-lane", { ladder: i + 1, lane: ladder.lane }); changed(); });
     card.querySelector(".ladder-remove").addEventListener("click", () => {
       state.ladders.splice(i, 1);
       if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
@@ -777,7 +801,13 @@ $("annot").addEventListener("pointerover", (e) => {
   groupDrag.g.to = Math.max(groupDrag.start, k);
   paintGroups();
 });
-window.addEventListener("pointerup", () => { if (groupDrag) { groupDrag = null; drawFigure(); updateCaption(); } });
+window.addEventListener("pointerup", () => {
+  if (!groupDrag) return;
+  log("group", { group: state.groups.indexOf(groupDrag.g) + 1, from: groupDrag.g.from, to: groupDrag.g.to });
+  groupDrag = null;
+  drawFigure();
+  updateCaption();
+});
 
 // ---------- band annotations ----------
 
@@ -785,6 +815,9 @@ window.addEventListener("pointerup", () => { if (groupDrag) { groupDrag = null; 
 // uncertainty, and an annotation (kept on the band while it stays marked).
 function drawBandNotes() {
   const marked = (state.pickMarks || []).flat();
+  logOnChange("marked-bands", marked.map((q) => ({ name: q.name, row: q.y, kDa: q.kda === null ? q.label : +q.kda.toFixed(1),
+                                                   pm: q.pm === undefined ? null : +q.pm.toFixed(2), created: q.created,
+                                                   runningOk: q.alignOk })));
   $("band-annot").hidden = marked.length === 0;
   const table = $("band-table");
   if (typingIn(table)) return;
@@ -836,7 +869,7 @@ function drawMethod() {
   });
 }
 
-$("method-type").addEventListener("change", () => { state.method.type = $("method-type").value; drawMethod(); updateCaption(); });
+$("method-type").addEventListener("change", () => { state.method.type = $("method-type").value; log("method", { type: state.method.type }); drawMethod(); updateCaption(); });
 $("stain").addEventListener("input", () => { state.method.stain = $("stain").value; updateCaption(); });
 $("add-antibody").addEventListener("click", () => {
   state.method.antibodies.push({ key: Object.keys(ANTIBODIES)[0], text: "" });
@@ -922,6 +955,7 @@ function drawFigure() {
 for (const id of ["show-ids", "show-groups"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
 
 $("fig-download").addEventListener("click", () => {
+  log("download", { what: "figure" });
   $("figure-canvas").toBlob((b) => save(b, `${state.src.name}_figure.png`));
 });
 
@@ -932,8 +966,10 @@ $("fig-copy").addEventListener("click", async () => {
   try {
     await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
     $("figure-note").textContent = "Copied to the clipboard.";
+    log("copy", { what: "figure", ok: true });
   } catch (err) {
     $("figure-note").textContent = `Couldn't copy (${err.message}); use Download instead.`;
+    log("copy", { what: "figure", ok: false, message: err.message });
   }
 });
 
@@ -957,7 +993,12 @@ function save(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+$("dl-log").addEventListener("click", () => {
+  save(new Blob([logText()], { type: "text/plain" }), `gel-ed_log_${new Date().toISOString().replace(/[:.]/g, "-")}.txt`);
+});
+
 $("dl-overlay").addEventListener("click", () => {
+  log("download", { what: "overlay" });
   overlayCanvas.toBlob((b) => save(b, `${state.src.name}_overlay.png`));
 });
 
@@ -1000,10 +1041,13 @@ function showValues() {
 for (const id of GEOMETRY) $(id).addEventListener("input", () => { showValues(); state.src && applyGeometry(); });
 for (const id of TONE) $(id).addEventListener("input", () => { showValues(); state.src && applyTone(); });
 for (const id of BANDS) $(id).addEventListener("input", () => { showValues(); state.src && analyse(); });
-$("source").addEventListener("change", () => state.src && analyse());
-$("redo").addEventListener("click", () => state.src && analyse());
+$("source").addEventListener("change", () => { log("source", { value: $("source").value }); state.src && analyse(); });
+$("redo").addEventListener("click", () => { log("redo"); state.src && analyse(); });
+// sliders: one entry when released, not on every step
+for (const id of [...GEOMETRY, ...TONE, ...BANDS]) $(id).addEventListener("change", () => log("setting", { [id]: value(id) }));
 $("show-profiles").addEventListener("click", () => { // for debugging: profiles and band kinds
   const on = $("show-profiles").getAttribute("aria-pressed") !== "true";
+  log("show-profiles", { on });
   $("show-profiles").setAttribute("aria-pressed", String(on));
   $("key-profiles").hidden = !on;
   $("key-bands").hidden = on;
@@ -1014,12 +1058,15 @@ for (const id of [...GEOMETRY, ...TONE]) {
 }
 $("invert").addEventListener("click", () => {
   state.invert = !state.invert;
+  log("invert", { on: state.invert });
   $("invert").setAttribute("aria-pressed", String(state.invert));
   applyTone();
 });
-$("reset-edits").addEventListener("click", () => resetEdits());
-$("lanes").addEventListener("change", () => { state.bounds = null; state.laneNote = ""; resetLadders(); analyse(); });
-$("find-lanes").addEventListener("click", () => { state.countLanes = true; resetLadders(); analyse(); });
+$("reset-edits").addEventListener("click", () => { log("reset-edits"); resetEdits(); });
+$("lanes").addEventListener("change", () => {
+  log("lanes-set", { n: $("lanes").value }); state.bounds = null; state.laneNote = ""; resetLadders(); analyse(); });
+$("find-lanes").addEventListener("click", () => {
+  log("find-lanes"); state.countLanes = true; resetLadders(); analyse(); });
 window.addEventListener("resize", () => {
   if (state.box) drawEditor();
   if (state.cropImg && state.results) drawResults();
