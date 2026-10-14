@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=9c882b93";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=9c882b93";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=9c882b93";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=9c882b93";
-import { median } from "./signal.js?v=9c882b93";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=9c882b93";
-import { LADDERS } from "./ladders.js?v=9c882b93";
-import { drawIcons } from "./icons.js?v=9c882b93";
+import { readImage } from "./image.js?v=f1f68556";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f1f68556";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f1f68556";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=f1f68556";
+import { median } from "./signal.js?v=f1f68556";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=f1f68556";
+import { LADDERS } from "./ladders.js?v=f1f68556";
+import { drawIcons } from "./icons.js?v=f1f68556";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -34,6 +34,7 @@ const state = {
   picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
   pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
   laneNotes: [],    // per lane: annotation text the user typed (undefined = not edited)
+  laneIds: [],      // per lane: lane label (undefined = the lane number)
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}
@@ -288,11 +289,27 @@ function assignLadders() {
       const bg = laneBackground(grey, w, h, s, e);
       const chosen = pickLadderBands(bands, bands.map((b) => bandSolidity(grey, w, h, s, e, b.y, bg)), sizes.length);
       lad.markers = chosen.map((b, i) => ({ y: b.y, kda: sizes[i] }));
+      // sizes with no band found still get a marker, so they can be dragged into place:
+      // at the row a straight line through log10(kDa) against row of the placed ones gives
+      if (lad.markers.length >= 2 && lad.markers.length < sizes.length) {
+        const ys = lad.markers.map((q) => q.y), ks = lad.markers.map((q) => Math.log10(q.kda));
+        const my = ys.reduce((a, v) => a + v, 0) / ys.length, mk = ks.reduce((a, v) => a + v, 0) / ks.length;
+        const slope = ys.reduce((a, v, i) => a + (v - my) * (ks[i] - mk), 0) / ys.reduce((a, v) => a + (v - my) ** 2, 0);
+        let last = lad.markers[lad.markers.length - 1].y;
+        for (const kda of sizes.slice(lad.markers.length)) {
+          let y = Math.round(my + (Math.log10(kda) - mk) / slope);
+          y = Math.min(Math.max(y, last + 3), h - 1); // below the last one, inside the image
+          lad.markers.push({ y, kda, estimated: true });
+          last = y;
+        }
+      }
     }
     const m = [...lad.markers].sort((a, b) => a.y - b.y);
     lad.note = "";
     lad.calib = null;
-    if (m.length < sizes.length) lad.note = `Only ${m.length} of ${sizes.length} ladder bands found; the smallest sizes aren't placed.`;
+    const est = m.filter((q) => q.estimated).map((q) => q.kda);
+    if (est.length) lad.note = `No band found for ${est.join(", ")} kDa: placed by estimate (pale). Drag onto the right band.`;
+    if (m.length < sizes.length) lad.note = `Only ${m.length} of ${sizes.length} ladder bands placed.`;
     if (m.some((q, i) => i && (q.kda >= m[i - 1].kda || q.y <= m[i - 1].y))) {
       lad.note = "Ladder bands are out of order: drag them back so sizes fall from top to bottom.";
     } else if (m.length >= 2) {
@@ -305,7 +322,7 @@ function assignLadders() {
   state.ladders.forEach((lad, li) => {
     const [s, e] = lanes[lad.lane - 1];
     lad.markers.forEach((q, i) => state.marks[lad.lane - 1].push(
-      { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i }));
+      { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i, estimated: !!q.estimated }));
   });
   // marked bands: named lane.letter top to bottom, mass from the nearest ladder with a
   // calibration (outside the ladder: ">top" / "<bottom")
@@ -498,6 +515,7 @@ overlayCanvas.addEventListener("pointerup", (e) => {
     }
     const lad = state.ladders[mark.ladder];
     const me = lad.markers[mark.i];
+    delete me.estimated;
     const other = lad.markers.find((q) => q !== me && Math.abs(q.y - y) <= 2);
     if (other) other.y = me.y;
     me.y = y;
@@ -594,7 +612,7 @@ function drawAnnotations(force = false) {
     th.innerHTML = `<input type="text" class="group-name" placeholder="Group name"><button type="button" class="link group-remove" title="Remove this group">×</button>`;
     const name = th.querySelector(".group-name");
     name.value = g.name;
-    name.addEventListener("input", () => { g.name = name.value; });
+    name.addEventListener("input", () => { g.name = name.value; drawFigure(); });
     th.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(gi, 1); drawAnnotations(true); });
     head.append(th);
   });
@@ -609,10 +627,13 @@ function drawAnnotations(force = false) {
   head.append(addTh);
   const rows = lanes.map((k) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="lane-no">Lane ${k}</td><td><input type="text" class="lane-text" placeholder="Sample, treatment, …"></td>`;
+    tr.innerHTML = `<td><input type="text" class="lane-id"></td><td><input type="text" class="lane-text" placeholder="Sample, treatment, …"></td>`;
+    const id = tr.querySelector(".lane-id");
+    id.value = state.laneIds[k] ?? String(k);
+    id.addEventListener("input", () => { state.laneIds[k] = id.value; drawFigure(); });
     const input = tr.querySelector(".lane-text");
     input.value = state.laneNotes[k] ?? "";
-    input.addEventListener("input", () => { state.laneNotes[k] = input.value; });
+    input.addEventListener("input", () => { state.laneNotes[k] = input.value; drawFigure(); });
     state.groups.forEach((g, gi) => {
       const td = document.createElement("td");
       td.className = "group-cell";
@@ -652,7 +673,7 @@ $("annot").addEventListener("pointerover", (e) => {
   groupDrag.g.to = Math.max(groupDrag.start, k);
   paintGroups();
 });
-window.addEventListener("pointerup", () => { groupDrag = null; });
+window.addEventListener("pointerup", () => { if (groupDrag) { groupDrag = null; drawFigure(); } });
 
 // ---------- figure ----------
 
@@ -662,10 +683,27 @@ function drawFigure() {
   const { grey, w, h } = state.cropImg;
   const placed = state.ladders.filter((l) => l.markers && l.markers.length).sort((a, b) => a.lane - b.lane);
   const side = (l) => (l ? [...l.markers].sort((a, b) => a.y - b.y).map((q) => ({ y: q.y, kda: q.kda })) : null);
-  renderFigure($("figure-canvas"), grey, w, h, side(placed[0]), placed.length > 1 ? side(placed[placed.length - 1]) : null);
+  // above the gel: lane labels and annotations (sample lanes; ladders are on the MW scale)
+  // and group bars, one row per group column that has lanes
+  const pairs = lanePairs(), ladderLanes = new Set(state.ladders.map((l) => l.lane));
+  const lanes = pairs.map(([x0, x1], i) => (ladderLanes.has(i + 1) ? { x0, x1, id: "", text: "" }
+    : { x0, x1, id: state.laneIds[i + 1] ?? String(i + 1), text: state.laneNotes[i + 1] ?? "" }));
+  // each group on the lowest row where it doesn't overlap another (side-by-side groups share a row)
+  const rows = [];
+  const groups = state.groups.filter((g) => g.from !== null && g.to <= pairs.length).map((g) => {
+    let level = 0;
+    while ((rows[level] || []).some((o) => o.from <= g.to && g.from <= o.to)) level++;
+    (rows[level] = rows[level] || []).push(g);
+    return { x0: pairs[g.from - 1][0], x1: pairs[g.to - 1][1], name: g.name, level };
+  });
+  const show = { ids: $("show-ids").checked, notes: $("show-notes").checked, groups: $("show-groups").checked };
+  renderFigure($("figure-canvas"), grey, w, h, side(placed[0]), placed.length > 1 ? side(placed[placed.length - 1]) : null,
+               { lanes, groups, show });
   $("figure-note").textContent = placed.length > 2
     ? `${placed.length} ladders: only the leftmost and rightmost are marked on the figure.` : "";
 }
+
+for (const id of ["show-ids", "show-notes", "show-groups"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
 
 $("fig-download").addEventListener("click", () => {
   $("figure-canvas").toBlob((b) => save(b, `${state.src.name}_figure.png`));

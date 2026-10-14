@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=9c882b93">
-  <script type="module" src="js/app.js?v=9c882b93"></script>
+  <link rel="stylesheet" href="css/style.css?v=f1f68556">
+  <script type="module" src="js/app.js?v=f1f68556"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="9c882b93">version 20</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="f1f68556">version 21</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -176,6 +176,10 @@
           <button type="button" id="fig-download" class="btn">Download PNG</button>
           <button type="button" id="fig-copy" class="btn">Copy</button>
         </div>
+        <p class="fig-show">Show:
+          <label><input type="checkbox" id="show-ids" checked> lane labels</label>
+          <label><input type="checkbox" id="show-notes" checked> annotations</label>
+          <label><input type="checkbox" id="show-groups" checked> groups</label></p>
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>
         <label class="caption-label" for="caption">Figure caption</label>

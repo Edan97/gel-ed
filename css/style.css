@@ -210,3 +210,6 @@ table.annot .lane-text { width: 18rem; }
 }
 .caption-label { display: block; font-weight: 600; margin: 0.9rem 0 0.3rem; }
 #caption { display: block; width: 100%; resize: vertical; margin-bottom: 0.5rem; }
+table.annot .lane-id { width: 3.5rem; }
+.fig-show { font-size: 0.9rem; color: var(--text-secondary); margin: 0.4rem 0; display: flex; gap: 0.9rem; flex-wrap: wrap; }
+.fig-show label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-primary); }

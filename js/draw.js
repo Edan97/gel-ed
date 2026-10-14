@@ -53,7 +53,7 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
         const moving = drag && drag.mark === q;
         const x = moving ? drag.x : q.x, y = top + (moving ? drag.y : q.y);
         ctx.fillStyle = COLOURS.peak;
-        ctx.globalAlpha = moving ? 0.6 : 1;
+        ctx.globalAlpha = moving ? 0.6 : q.estimated ? 0.4 : 1; // pale: placed by estimate, not on a band
         ctx.beginPath();
         ctx.arc(x, y, 4 * px, 0, 2 * Math.PI);
         ctx.fill();
@@ -143,8 +143,12 @@ export function drawDividers(ctx, bounds, top, height, px, active = -1) {
 // A figure: the gel (analysed area) on white, outlined, with ladder sizes marked down the
 // side: left = [{y, kda}] for the left side, right = the same for the right side (or
 // null). Labels that would overlap the one above get a longer line and sit further out.
+// Above the gel (top, optional): per lane {x0, x1, id, text} (columns of the gel) drawn
+// as lane labels, then annotations (tilted 45° if any is wider than its lane), then
+// groups {x0, x1, name, level}: a bar over their lanes with the name above, one row per
+// level. top.show = {ids, notes, groups} switches rows on and off.
 // Drawn at the gel's own resolution; text and lines scale with its height.
-export function renderFigure(canvas, grey, w, h, left, right) {
+export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const base = Math.max(14, Math.round(h / 30));
   const fs = Math.round(1.6 * base);                     // size labels and "MW (kDa)"
   const lw = 2 * Math.max(1, base / 10);                 // lines and outline
@@ -167,12 +171,30 @@ export function renderFigure(canvas, grey, w, h, left, right) {
     });
     const levels = Math.max(...placed.map((q) => q.level)) + 1;
     const reach = (level) => tick + level * (textW + 2 * gap + tick);
-    const kw = ctx.measureText("MW (kDa)").width;
-    return { placed, reach, width: Math.ceil(Math.max(reach(levels - 1) + gap + textW, kw) + fs * 0.6) };
+    const kw = ctx.measureText("MW (kDa)").width; // sits after a tick's length and a gap, like the sizes
+    return { placed, reach, width: Math.ceil(Math.max(reach(levels - 1) + gap + textW, tick + gap + kw) + fs * 0.6) };
   };
   const L = layout(left), R = layout(right);
-  const ml = L ? L.width : Math.round(fs * 0.6), mr = R ? R.width : Math.round(fs * 0.6);
-  const mt = Math.round(fs * 1.5), mb = Math.round(fs * 0.5);
+  const ml = L ? L.width : Math.round(fs * 0.6);
+  let mr = R ? R.width : Math.round(fs * 0.6);
+  // rows above the gel, bottom (next to the gel) to top
+  const afs = Math.round(fs * 0.8), afont = `${afs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const show = (top && top.show) || {};
+  const lanes = (top && top.lanes) || [], groups = (top && top.groups) || [];
+  ctx.font = afont;
+  const ids = show.ids && lanes.some((l) => l.id) ? Math.round(afs * 1.4) : 0;
+  const notes = show.notes ? lanes.filter((l) => l.text) : [];
+  const tilt = notes.some((l) => ctx.measureText(l.text).width > (l.x1 - l.x0) * 0.92);
+  const notesH = !notes.length ? 0
+    : tilt ? Math.ceil(Math.max(...notes.map((l) => ctx.measureText(l.text).width)) * Math.SQRT1_2 + afs * 1.2)
+    : Math.round(afs * 1.4);
+  const levels = show.groups && groups.length ? Math.max(...groups.map((g) => g.level)) + 1 : 0;
+  const groupH = Math.round(afs * 2.0);
+  const above = ids + notesH + levels * groupH;
+  // tilted annotations lean right: make room past the gel's right edge for the last ones
+  const lean = tilt ? Math.max(0, ...notes.map((l) => (l.x0 + l.x1) / 2 + ctx.measureText(l.text).width * Math.SQRT1_2 + afs - w)) : 0;
+  const mt = Math.max(Math.round(fs * 1.5), above + Math.round(afs * 0.6)), mb = Math.round(fs * 0.5);
+  mr = Math.max(mr, Math.ceil(lean));
   canvas.width = Math.ceil(w + ml + mr);
   canvas.height = h + mt + mb;
   ctx.fillStyle = "#ffffff";
@@ -202,4 +224,47 @@ export function renderFigure(canvas, grey, w, h, left, right) {
   };
   side(L, ml, -1);
   side(R, ml + w, 1);
+
+  ctx.font = afont;
+  ctx.fillStyle = ctx.strokeStyle = "#000000";
+  let yb = mt - Math.round(afs * 0.4); // bottom of the next row up
+  if (ids) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    for (const l of lanes) if (l.id) ctx.fillText(l.id, ml + (l.x0 + l.x1) / 2, yb);
+    yb -= ids;
+  }
+  if (notesH) {
+    for (const l of notes) {
+      const cx = ml + (l.x0 + l.x1) / 2;
+      ctx.save();
+      if (tilt) { // reads upwards to the right from just above the lane
+        ctx.translate(cx - afs * 0.3, yb);
+        ctx.rotate(-Math.PI / 4);
+        ctx.textAlign = "left";
+        ctx.fillText(l.text, 0, 0);
+      } else {
+        ctx.textAlign = "center";
+        ctx.fillText(l.text, cx, yb);
+      }
+      ctx.restore();
+    }
+    yb -= notesH;
+  }
+  if (levels) {
+    ctx.lineWidth = lw;
+    ctx.textAlign = "center";
+    const inset = Math.round(afs * 0.3);
+    for (let lv = 0; lv < levels; lv++) {
+      const barY = yb - Math.round(afs * 0.2);
+      for (const g of groups.filter((q) => q.level === lv)) {
+        ctx.beginPath();
+        ctx.moveTo(ml + g.x0 + inset, barY);
+        ctx.lineTo(ml + g.x1 - inset, barY);
+        ctx.stroke();
+        if (g.name) ctx.fillText(g.name, ml + (g.x0 + g.x1) / 2, barY - Math.round(afs * 0.35));
+      }
+      yb -= groupH;
+    }
+  }
 }
