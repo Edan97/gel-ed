@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=f1f68556";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f1f68556";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f1f68556";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=f1f68556";
-import { median } from "./signal.js?v=f1f68556";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=f1f68556";
-import { LADDERS } from "./ladders.js?v=f1f68556";
-import { drawIcons } from "./icons.js?v=f1f68556";
+import { readImage } from "./image.js?v=7b02ef2b";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=7b02ef2b";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=7b02ef2b";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=7b02ef2b";
+import { median } from "./signal.js?v=7b02ef2b";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=7b02ef2b";
+import { LADDERS } from "./ladders.js?v=7b02ef2b";
+import { drawIcons } from "./icons.js?v=7b02ef2b";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -33,7 +33,6 @@ const state = {
   marks: null,      // per lane: ladder markers to draw [{y, x, kda, ladder, i}]
   picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
   pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
-  laneNotes: [],    // per lane: annotation text the user typed (undefined = not edited)
   laneIds: [],      // per lane: lane label (undefined = the lane number)
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
@@ -313,7 +312,8 @@ function assignLadders() {
     if (m.some((q, i) => i && (q.kda >= m[i - 1].kda || q.y <= m[i - 1].y))) {
       lad.note = "Ladder bands are out of order: drag them back so sizes fall from top to bottom.";
     } else if (m.length >= 2) {
-      lad.calib = { f: pchip(m.map((q) => q.y), m.map((q) => Math.log10(q.kda))),
+      const ys = m.map((q) => q.y), lk = m.map((q) => Math.log10(q.kda));
+      lad.calib = { f: pchip(ys, lk), loo: ladderLoo(ys, lk),
                     y0: m[0].y, y1: m[m.length - 1].y, kMax: m[0].kda, kMin: m[m.length - 1].kda };
     }
   }
@@ -337,7 +337,16 @@ function assignLadders() {
         const c = near.calib;
         if (q.y < c.y0) out.label = `>${c.kMax}`;
         else if (q.y > c.y1) out.label = `<${c.kMin}`;
-        else { out.kda = 10 ** c.f(q.y); out.label = fmtKda(out.kda); }
+        else {
+          out.kda = 10 ** c.f(q.y);
+          out.label = fmtKda(out.kda);
+          // uncertainty (log10): band position through the curve's local slope, plus calibration
+          const found = state.results[j].bands.find((b) => Math.abs(b.y - q.y) <= 1);
+          const sy = found && !q.created ? found.sigmaY : 3; // 3 rows for a band placed by hand
+          const slope = Math.abs(c.f(Math.min(q.y + 0.5, c.y1)) - c.f(Math.max(q.y - 0.5, c.y0)));
+          const sd = Math.hypot(slope * sy, c.loo ? c.loo(q.y) : 0);
+          out.pm = out.kda * (10 ** sd - 1);
+        }
       }
       return out;
     });
@@ -415,6 +424,7 @@ function drawResults(active = -1) {
   drawFigure();
   drawLadderNotes();
   drawAnnotations();
+  drawBandNotes();
 }
 
 // A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
@@ -605,7 +615,7 @@ function drawAnnotations(force = false) {
   const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k));
   for (const g of state.groups) if (g.from && (g.from > n || g.to > n)) { g.from = g.to = null; }
   const head = document.createElement("tr");
-  head.innerHTML = "<th>Lane</th><th>Annotation</th>";
+  head.innerHTML = "<th>Lane</th>";
   state.groups.forEach((g, gi) => {
     const th = document.createElement("th");
     th.className = "group-head";
@@ -627,13 +637,10 @@ function drawAnnotations(force = false) {
   head.append(addTh);
   const rows = lanes.map((k) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><input type="text" class="lane-id"></td><td><input type="text" class="lane-text" placeholder="Sample, treatment, …"></td>`;
+    tr.innerHTML = `<td><input type="text" class="lane-id"></td>`;
     const id = tr.querySelector(".lane-id");
     id.value = state.laneIds[k] ?? String(k);
     id.addEventListener("input", () => { state.laneIds[k] = id.value; drawFigure(); });
-    const input = tr.querySelector(".lane-text");
-    input.value = state.laneNotes[k] ?? "";
-    input.addEventListener("input", () => { state.laneNotes[k] = input.value; drawFigure(); });
     state.groups.forEach((g, gi) => {
       const td = document.createElement("td");
       td.className = "group-cell";
@@ -675,6 +682,31 @@ $("annot").addEventListener("pointerover", (e) => {
 });
 window.addEventListener("pointerup", () => { if (groupDrag) { groupDrag = null; drawFigure(); } });
 
+// ---------- band annotations ----------
+
+// Appears once a non-ladder band is marked: per marked band its name, estimated MW with
+// uncertainty, and an annotation (kept on the band while it stays marked).
+function drawBandNotes() {
+  const marked = (state.pickMarks || []).flat();
+  $("band-annot").hidden = marked.length === 0;
+  const table = $("band-table");
+  if (typingIn(table)) return;
+  const head = document.createElement("tr");
+  head.innerHTML = "<th>Band</th><th>MW (kDa)</th><th>Annotation</th>";
+  const rows = marked.map((q) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="band-name"></td><td class="band-mw"></td><td><input type="text" class="band-text" placeholder="e.g. full-length, cleaved, …"></td>`;
+    tr.querySelector(".band-name").textContent = q.name;
+    tr.querySelector(".band-mw").textContent = q.kda === null ? (q.label || "—")
+      : `${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}`;
+    const input = tr.querySelector(".band-text");
+    input.value = q.ref.note ?? "";
+    input.addEventListener("input", () => { q.ref.note = input.value; });
+    return tr;
+  });
+  table.replaceChildren(head, ...rows);
+}
+
 // ---------- figure ----------
 
 // The analysed gel with ladder sizes down the side: the leftmost ladder on the left, a
@@ -687,7 +719,7 @@ function drawFigure() {
   // and group bars, one row per group column that has lanes
   const pairs = lanePairs(), ladderLanes = new Set(state.ladders.map((l) => l.lane));
   const lanes = pairs.map(([x0, x1], i) => (ladderLanes.has(i + 1) ? { x0, x1, id: "", text: "" }
-    : { x0, x1, id: state.laneIds[i + 1] ?? String(i + 1), text: state.laneNotes[i + 1] ?? "" }));
+    : { x0, x1, id: state.laneIds[i + 1] ?? String(i + 1), text: "" }));
   // each group on the lowest row where it doesn't overlap another (side-by-side groups share a row)
   const rows = [];
   const groups = state.groups.filter((g) => g.from !== null && g.to <= pairs.length).map((g) => {
@@ -696,14 +728,14 @@ function drawFigure() {
     (rows[level] = rows[level] || []).push(g);
     return { x0: pairs[g.from - 1][0], x1: pairs[g.to - 1][1], name: g.name, level };
   });
-  const show = { ids: $("show-ids").checked, notes: $("show-notes").checked, groups: $("show-groups").checked };
+  const show = { ids: $("show-ids").checked, notes: false, groups: $("show-groups").checked };
   renderFigure($("figure-canvas"), grey, w, h, side(placed[0]), placed.length > 1 ? side(placed[placed.length - 1]) : null,
                { lanes, groups, show });
   $("figure-note").textContent = placed.length > 2
     ? `${placed.length} ladders: only the leftmost and rightmost are marked on the figure.` : "";
 }
 
-for (const id of ["show-ids", "show-notes", "show-groups"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
+for (const id of ["show-ids", "show-groups"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
 
 $("fig-download").addEventListener("click", () => {
   $("figure-canvas").toBlob((b) => save(b, `${state.src.name}_figure.png`));
@@ -757,15 +789,16 @@ $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
   const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
   // marked bands and ladder bands; kind/saturated/snr come from the band found at that row (if any)
-  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kDa", "ladder_size_kDa", "found_or_created",
+  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kDa", "kDa_uncertainty", "ladder_size_kDa", "found_or_created", "annotation",
                  "kind", "saturated", "snr", "read_from", ...GEOMETRY, ...TONE, "invert"]];
   const found = (i, y) => state.results[i].bands.find((b) => Math.abs(b.y - y) <= 1);
   const extra = (b) => (b ? [b.kind, b.saturated, b.snr.toFixed(1)] : ["", "", ""]);
   lanePairs().forEach(([s, e], i) => {
-    for (const q of state.marks[i]) rows.push(["", i + 1, s, e - 1, q.y, q.x.toFixed(1), q.kda, q.kda,
-      found(i, q.y) ? "found" : "created", ...extra(found(i, q.y)), $("source").value, ...edits, state.invert]);
+    for (const q of state.marks[i]) rows.push(["", i + 1, s, e - 1, q.y, q.x.toFixed(1), q.kda, "", q.kda,
+      found(i, q.y) ? "found" : "created", "", ...extra(found(i, q.y)), $("source").value, ...edits, state.invert]);
     for (const q of state.pickMarks[i]) rows.push([q.name, i + 1, s, e - 1, q.y, q.x.toFixed(1),
-      q.kda !== null ? q.kda.toFixed(1) : q.label, "", q.created ? "created" : "found", ...extra(found(i, q.y)),
+      q.kda !== null ? q.kda.toFixed(1) : q.label, q.pm !== undefined ? q.pm.toFixed(1) : "", "",
+      q.created ? "created" : "found", `"${(q.ref.note ?? "").replace(/"/g, '""')}"`, ...extra(found(i, q.y)),
       $("source").value, ...edits, state.invert]);
   });
   save(new Blob([rows.map((r) => r.join(",")).join("\n") + "\n"], { type: "text/csv" }), `${state.src.name}_bands.csv`);

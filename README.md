@@ -60,16 +60,18 @@ Band finding settings: threshold (in multiples of each lane's noise), how much o
 lane's centre is used, smoothing, and the noise window. Defaults match the Python version.
 
    **Ladder** (under the overlay): the selected ladder's name (editable) and its
-   volume. **Lane annotations**: per sample lane a label (pre-filled with the lane
-   number) and an annotation, and one column per **group** (e.g. non-reducing /
+   volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
+   with the lane number), and one column per **group** (e.g. non-reducing /
    reducing): name it at the top, then click a lane's cell and drag to cover a
-   continuous run of lanes. Ladder sizes with no band found are placed by estimate
+   continuous run of lanes. **Band annotations** (collapsible, appears once a band is
+   marked): each marked band's estimated MW ± uncertainty (band position and ladder
+   calibration, as in the Python version; not yet including lanes running
+   differently) and an annotation, also in the bands CSV. Ladder sizes with no band found are placed by estimate
    (pale) so they can be dragged onto the right band.
 4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
    (the leftmost ladder on the left, a second ladder on the right); sizes that would
-   overlap get a longer line and sit further out. Above the gel: lane labels, the
-   annotations (tilted 45° when too wide for their lane) and group bars with names
-   (groups that don't overlap share a row); each can be switched off. Download as PNG
+   overlap get a longer line and sit further out. Above the gel: lane labels and group
+   bars with names (groups that don't overlap share a row); each can be switched off. Download as PNG
    or copy to the clipboard. A **figure caption** box underneath can be copied too.
 
 ## Repository layout

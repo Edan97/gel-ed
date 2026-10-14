@@ -1,6 +1,6 @@
 // Ladder band picking and mass calibration.
 
-import { gaussian1d, median } from "./signal.js?v=f1f68556";
+import { gaussian1d, median } from "./signal.js?v=7b02ef2b";
 
 // Monotone piecewise-cubic interpolation, scipy.interpolate.PchipInterpolator's formulas
 // (the Python mass calibration uses it). xs strictly increasing. Returns f(x); outside
@@ -78,4 +78,25 @@ export function pickLadderBands(bands, solidity, n) {
   const ranked = bands.map((b, i) => ({ b, s: solidity[i] }))
     .sort((p, q) => (Math.abs(q.s - p.s) > 0.02 ? q.s - p.s : q.b.snr - p.b.snr));
   return ranked.slice(0, n).map((p) => p.b).sort((p, q) => p.y - q.y);
+}
+
+// Calibration uncertainty, as scoping/band_masses.py: leave each interior ladder band out,
+// predict its log10(kDa) from the rest; the miss, interpolated by row (held flat beyond
+// the outer interior bands). Conservative: leaving a band out doubles the gap bridged.
+// Returns f(row) -> log10 uncertainty, or null with fewer than 4 ladder bands.
+export function ladderLoo(rows, logk) {
+  if (rows.length < 4) return null;
+  const at = [], err = [];
+  for (let i = 1; i < rows.length - 1; i++) {
+    const f = pchip(rows.filter((_, j) => j !== i), logk.filter((_, j) => j !== i));
+    at.push(rows[i]);
+    err.push(Math.abs(f(rows[i]) - logk[i]));
+  }
+  return (y) => {
+    if (y <= at[0]) return err[0];
+    if (y >= at[at.length - 1]) return err[err.length - 1];
+    let i = 0;
+    while (y > at[i + 1]) i++;
+    return err[i] + ((err[i + 1] - err[i]) * (y - at[i])) / (at[i + 1] - at[i]);
+  };
 }

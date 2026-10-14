@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=f1f68556">
-  <script type="module" src="js/app.js?v=f1f68556"></script>
+  <link rel="stylesheet" href="css/style.css?v=7b02ef2b">
+  <script type="module" src="js/app.js?v=7b02ef2b"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="f1f68556">version 21</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="7b02ef2b">version 22</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -162,10 +162,19 @@
             <p id="summary" class="hint"></p>
             <h3 class="sub">Ladder</h3>
             <div id="ladder-notes" class="ladder-notes"></div>
-            <h3 class="sub">Lane annotations</h3>
-            <p class="hint">Groups (e.g. non-reducing / reducing): add a column, name it, then click a lane's cell and
-              drag down to cover a continuous run of lanes. Click a lone selected cell to clear it.</p>
-            <div class="annot-wrap"><table id="annot" class="annot"></table></div>
+            <details class="sub-details" open>
+              <summary>Lane annotations</summary>
+              <p class="hint">Lane labels (used above the lanes on the figure). Groups (e.g. non-reducing / reducing):
+                add a column, name it, then click a lane's cell and drag to cover a continuous run of lanes. Click a
+                lone selected cell to clear it.</p>
+              <div class="annot-wrap"><table id="annot" class="annot"></table></div>
+            </details>
+            <details id="band-annot" class="sub-details" open hidden>
+              <summary>Band annotations</summary>
+              <p class="hint">Each band you've marked, with its estimated molecular weight ± uncertainty (band position
+                and ladder calibration; not yet including lanes running differently, which can add several percent).</p>
+              <div class="annot-wrap"><table id="band-table" class="annot band-table"></table></div>
+            </details>
           </div>
         </div>
       </section>
@@ -178,7 +187,6 @@
         </div>
         <p class="fig-show">Show:
           <label><input type="checkbox" id="show-ids" checked> lane labels</label>
-          <label><input type="checkbox" id="show-notes" checked> annotations</label>
           <label><input type="checkbox" id="show-groups" checked> groups</label></p>
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>

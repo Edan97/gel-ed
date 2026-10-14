@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=f1f68556";
+import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=7b02ef2b";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -81,9 +81,18 @@ export function bandsFromProfile(meanIn, blackFrac, opts = {}) {
     prof[c] - localMin[c] > o.k * noise && !satNear[c] &&
     (peakRows.length === 0 || Math.min(...peakRows.map((r) => Math.abs(r - c))) > o.sep));
 
+  // position uncertainty (rows), as scoping/band_peaks.py: peaks 1.5 x (FWHM/2.355) / SNR
+  // (at least 0.25); saturated peaks at least the saturated run / sqrt(12); shoulders 2
+  const satRun = (i) => { let a = i, b = i; while (a > 0 && satNear[a - 1]) a--; while (b < h - 1 && satNear[b + 1]) b++; return b - a + 1; };
+  const sigmaPeak = (p) => {
+    let sd = Math.max(0.25, (1.5 * (p.width / 2.355)) / (p.prom / noise));
+    if (satNear[p.i]) sd = Math.max(sd, satRun(p.i) / Math.sqrt(12));
+    return sd;
+  };
   const bands = [
-    ...peaks.map((p) => ({ y: first + p.i, kind: "peak", height: p.prom, snr: p.prom / noise, saturated: !!satNear[p.i] })),
-    ...shoulders.map((c) => ({ y: first + c, kind: "shoulder", height: prof[c] - localMin[c],
+    ...peaks.map((p) => ({ y: first + p.i, kind: "peak", height: p.prom, snr: p.prom / noise, saturated: !!satNear[p.i],
+                           sigmaY: sigmaPeak(p) })),
+    ...shoulders.map((c) => ({ y: first + c, kind: "shoulder", sigmaY: 2, height: prof[c] - localMin[c],
                                snr: (prof[c] - localMin[c]) / noise, saturated: false })),
   ].sort((a, b) => a.y - b.y);
   full.set(prof, first);

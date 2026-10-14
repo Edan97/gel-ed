@@ -213,3 +213,9 @@ table.annot .lane-text { width: 18rem; }
 table.annot .lane-id { width: 3.5rem; }
 .fig-show { font-size: 0.9rem; color: var(--text-secondary); margin: 0.4rem 0; display: flex; gap: 0.9rem; flex-wrap: wrap; }
 .fig-show label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-primary); }
+details.sub-details { margin-top: 0.9rem; }
+details.sub-details > summary { font-weight: 600; font-size: 0.95rem; cursor: pointer; }
+details.sub-details[hidden] { display: none; }
+table.band-table .band-name { font-weight: 600; white-space: nowrap; }
+table.band-table .band-mw { white-space: nowrap; font-variant-numeric: tabular-nums; padding-right: 1rem; }
+table.band-table .band-text { width: 22rem; }
