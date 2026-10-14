@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FILES = [ROOT / "index.html", ROOT / "tests" / "parity.html", *sorted((ROOT / "css").glob("*.css")),
+FILES = [ROOT / "index.html", *sorted((ROOT / "tests").glob("*.html")), *sorted((ROOT / "css").glob("*.css")),
          *sorted((ROOT / "js").glob("*.js"))]
 # href="css/x.css", src="js/x.js", from "./x.js", import("./x.js"), from "../js/x.js"
 REF = re.compile(r"""((?:href|src)=["']|from\s+["']|import\(\s*["'])((?:\.{1,2}/|css/|js/)[\w./-]+\.(?:js|css))(\?v=[0-9a-f]+)?(["'])""")

@@ -91,27 +91,11 @@ function insideConvex(poly, x, y, eps = 1e-6) {
   return true;
 }
 
-// A crop {x0, y0, x1, y1} is allowed only if every pixel in it comes from the image:
-// all four corners inside the transformed outline (and inside the canvas).
+// A rectangle {x0, y0, x1, y1} is allowed if it lies on the w x h canvas and isn't tiny.
+// With poly (the transformed outline) it must also lie wholly inside the original image.
 export function cropValid(r, poly, w, h) {
   if (r.x0 < 0 || r.y0 < 0 || r.x1 > w - 1 || r.y1 > h - 1 || r.x1 - r.x0 < 4 || r.y1 - r.y0 < 4) return false;
-  return [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]].every(([x, y]) => insideConvex(poly, x, y));
-}
-
-// Largest allowed crop centred on (cx, cy) (the image centre, which the transform keeps
-// fixed): grow with the original's proportions (half-sizes hw0, hh0), then widen, then
-// heighten. w, h: canvas size.
-export function largestCrop(poly, w, h, cx = (w - 1) / 2, cy = (h - 1) / 2, hw0 = cx, hh0 = cy) {
-  const rect = (hw, hh) => ({ x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh });
-  const grow = (f, lo, hi) => {
-    for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (f(mid)) lo = mid; else hi = mid; }
-    return lo;
-  };
-  const s = grow((s) => cropValid(rect(s * hw0, s * hh0), poly, w, h), 0, 1);
-  const hw = grow((v) => cropValid(rect(v, s * hh0), poly, w, h), s * hw0, w);
-  const hh = grow((v) => cropValid(rect(hw, v), poly, w, h), s * hh0, h);
-  const r = rect(hw, hh);
-  return { x0: Math.ceil(r.x0), y0: Math.ceil(r.y0), x1: Math.floor(r.x1), y1: Math.floor(r.y1) };
+  return !poly || [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]].every(([x, y]) => insideConvex(poly, x, y));
 }
 
 // Move from an allowed crop towards a requested one, stopping at the last allowed point.

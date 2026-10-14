@@ -5,6 +5,9 @@ for every lane in a lane CSV, the lane's pixels (8-bit levels, rows from --row-s
 and Python's bands, so the browser test can run the JS version on the same pixels and
 compare. Output goes to scoping/out/ (not committed: it contains the gel).
 
+It also writes a copy of the image rotated by 3 degrees (<image>_rot3.png), for
+tests/straighten.html: straighten it in the browser and check the bands come back.
+
 Usage:
     python scoping/js_reference.py IMAGE --lanes FILE.csv [--row-start 140]
 """
@@ -15,6 +18,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
+from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from band_peaks import find_bands  # noqa: E402
@@ -44,6 +49,12 @@ def main():
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps({"image": Path(a.image).name, "row_start": a.row_start, "lanes": lanes}))
     print(out)
+
+    # a crooked copy: rotated 3 degrees (bilinear, white outside), saved as 8-bit PNG
+    rot = ndimage.rotate(img.astype(float) / 65535, 3, reshape=True, order=1, cval=1.0)
+    rot_path = out.parent / f"{Path(a.image).stem}_rot3.png"
+    Image.fromarray(np.rint(np.clip(rot, 0, 1) * 255).astype(np.uint8)).save(rot_path)
+    print(rot_path)
 
 
 if __name__ == "__main__":

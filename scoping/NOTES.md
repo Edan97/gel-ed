@@ -131,6 +131,12 @@ Open questions and decisions from exploring the sample gels. Not a plan.
   faint lanes: errors up to 51 px; now ≤ 23 px). Not in the page yet: masses,
   centre-lines, uncertainty, annotation cutoff (the crop does that job by hand).
 - Gel data (images, lane CSVs, outputs) is kept out of the public repository.
+- **Web: profiles from original pixels through the transform** (default), not from the
+  warped image. Resampling costs borderline bands; reading original pixels on a
+  straightened 3° copy: 111/115 recovered, 2 extra, vs 110/115 and 10 extra from the
+  warped image (tests/straighten.html). The largest-blank-free-rectangle crop is gone:
+  the whole image is analysed, trimming is optional. Fallback if this disappoints: drop
+  geometry and keep only brightness/contrast.
 
 ## Sample quirks
 

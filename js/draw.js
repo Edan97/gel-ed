@@ -25,7 +25,8 @@ export function drawOverlay(ctx, lanes, results, top, px) {
   lanes.forEach(([start, end], li) => {
     const { bands, profile, noise } = results[li];
     let min = Infinity, max = -Infinity;
-    for (const v of profile) { min = Math.min(min, v); max = Math.max(max, v); }
+    for (const v of profile) if (!Number.isNaN(v)) { min = Math.min(min, v); max = Math.max(max, v); }
+    if (min === Infinity) return; // lane has no pixels
     const lw = 10 * noise || 1e-6;
     const scale = (v) => Math.asinh(Math.max(v - min, 0) / lw);
     const topScale = scale(max) || 1;
@@ -34,7 +35,12 @@ export function drawOverlay(ctx, lanes, results, top, px) {
     ctx.strokeStyle = COLOURS.profile;
     ctx.lineWidth = 1.3 * px;
     ctx.beginPath();
-    profile.forEach((v, y) => (y ? ctx.lineTo(x(v), top + y) : ctx.moveTo(x(v), top + y)));
+    let pen = false; // rows without pixels (NaN) break the line
+    profile.forEach((v, y) => {
+      if (Number.isNaN(v)) { pen = false; return; }
+      if (pen) ctx.lineTo(x(v), top + y); else ctx.moveTo(x(v), top + y);
+      pen = true;
+    });
     ctx.stroke();
 
     for (const b of bands) {

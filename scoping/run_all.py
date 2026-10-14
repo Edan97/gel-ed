@@ -51,7 +51,7 @@ STEPS = [
     ("Band masses, uncertainties, ~105/109 kDa same-protein tests",
      ["scoping/band_masses.py", GEL02, "--lanes", LANES02, "--same", "103", "107.5", "--same", "107.5", "112",
       "--same-lanes", *map(str, range(2, 14))]),
-    ("Reference for the browser parity test (open tests/parity.html)",
+    ("Reference for the browser tests (open tests/parity.html and tests/straighten.html)",
      ["scoping/js_reference.py", GEL02, "--lanes", LANES02]),
 ]
 

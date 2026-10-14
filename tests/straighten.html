@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gel-ed · straightening: original pixels vs edited image</title>
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
+    table { border-collapse: collapse; } td, th { padding: 0.25rem 0.7rem; border-bottom: 1px solid #ddd; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>Straightening: reading original pixels vs the edited image</h1>
+  <p><code>scoping/js_reference.py</code> writes a copy of gel_02 rotated by 3°. This page straightens it with the
+    editor's rotation (+3°), finds the offset to the original, gives both the same lanes and area (rows from 140,
+    below the labels), and compares the bands with those of the untouched gel. A band counts as recovered if
+    found within 2 rows. Serve the repository root after running <code>scoping/run_all.py</code>.</p>
+  <p id="result">Running…</p>
+  <table id="table"></table>
+  <script type="module">
+    import { readImage } from "../js/image.js?v=f1b74688";
+    import * as T from "../js/transform.js?v=f1b74688";
+    import * as B from "../js/bands.js?v=f1b74688";
+
+    const get = async (u) => {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error(`${u}: ${r.status} (run scoping/run_all.py first)`);
+      const b = await r.blob();
+      return readImage(new File([b], u, { type: b.type }));
+    };
+    const TOP = 140, N = 13, ROTATION = 3;
+    try {
+      const A = await get("../scoping/samples/gel_02.jpg");
+      const R = await get("../scoping/out/gel_02_rot3.png");
+
+      const bounds = B.findLanes(A.grey.slice(TOP * A.w), A.w, A.h - TOP, N);
+      const id = T.matrix(A.w, A.h, {});
+      const truth = B.profilesFromOriginal(A.grey, A.w, A.h, id, T.frame(A.w, A.h, id),
+        { x0: 0, y0: TOP, x1: A.w - 1, y1: A.h - 1 }, bounds, 0.25, 0.03, (x) => x)
+        .map((p) => B.bandsFromProfile(p.mean, p.black).bands);
+
+      const m = T.matrix(R.w, R.h, { rotation: ROTATION }), box = T.frame(R.w, R.h, m);
+      const warped = T.warp(R.grey, R.w, R.h, m, box);
+      // offset between the straightened frame and the original, from row and column profiles
+      const profiles = (g, w, h) => {
+        const c = new Float64Array(w), r = new Float64Array(h), cn = new Float64Array(w), rn = new Float64Array(h);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const q = g[y * w + x]; if (Number.isNaN(q)) continue;
+          c[x] += 1 - q; cn[x]++; r[y] += 1 - q; rn[y]++;
+        }
+        return { c: c.map((s, i) => (cn[i] ? s / cn[i] : 0)), r: r.map((s, i) => (rn[i] ? s / rn[i] : 0)) };
+      };
+      const shift = (a, b) => {
+        let best = [0, -Infinity];
+        for (let d = -150; d <= 150; d++) {
+          let s = 0;
+          for (let i = 0; i < a.length; i++) { const j = i + d; if (j >= 0 && j < b.length) s += a[i] * b[j]; }
+          if (s > best[1]) best = [d, s];
+        }
+        return best[0];
+      };
+      const pa = profiles(A.grey, A.w, A.h), pr = profiles(warped, box.W, box.H);
+      const dx = shift(pa.c, pr.c), dy = shift(pa.r, pr.r);
+      const rect = { x0: dx, y0: dy + TOP, x1: dx + A.w - 1, y1: dy + A.h - 1 };
+      const H = rect.y1 - rect.y0 + 1;
+
+      const original = B.profilesFromOriginal(R.grey, R.w, R.h, m, box, rect, bounds, 0.25, 0.03, (x) => x)
+        .map((p) => B.bandsFromProfile(p.mean, p.black).bands);
+      const edited = bounds.slice(0, -1).map((b0, i) => {
+        const [c0, c1] = B.coreColumns(Math.round(b0), Math.round(bounds[i + 1]), 0.25);
+        const mean = new Float64Array(H), black = new Float64Array(H);
+        for (let y = 0; y < H; y++) {
+          let s = 0, n = 0, k = 0;
+          for (let x = c0; x < c1; x++) {
+            const q = warped[(rect.y0 + y) * box.W + rect.x0 + x];
+            if (Number.isNaN(q)) continue;
+            s += 1 - q; n++; if (q <= 0.03) k++;
+          }
+          mean[y] = n ? s / n : NaN; black[y] = n ? k / n : 0;
+        }
+        return B.bandsFromProfile(mean, black).bands;
+      });
+
+      const score = (test) => {
+        let hit = 0, err = 0;
+        truth.forEach((l, i) => l.forEach((b) => {
+          const d = test[i].map((t) => Math.abs(t.y - b.y)).filter((e) => e <= 2);
+          if (d.length) { hit++; err += Math.min(...d); }
+        }));
+        const found = test.reduce((s, l) => s + l.length, 0);
+        return [hit, found - hit, (err / hit).toFixed(2)];
+      };
+      const total = truth.reduce((s, l) => s + l.length, 0);
+      const table = document.getElementById("table");
+      table.innerHTML = `<tr><th>Read profiles from</th><th>Recovered (of ${total})</th><th>Extra bands</th><th>Mean row error</th></tr>`;
+      for (const [name, test] of [["original pixels", original], ["edited image", edited]]) {
+        const [hit, extra, err] = score(test);
+        table.insertAdjacentHTML("beforeend", `<tr><td>${name}</td><td>${hit}</td><td>${extra}</td><td>${err}</td></tr>`);
+      }
+      document.getElementById("result").textContent = `Offset between frames: ${dx}, ${dy} px.`;
+    } catch (e) {
+      document.getElementById("result").textContent = e.message;
+    }
+  </script>
+</body>
+</html>

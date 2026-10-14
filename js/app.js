@@ -1,11 +1,13 @@
-// gel-ed web app: load → edit (tone, geometry; crop set automatically) → lanes → bands → overlay.
+// gel-ed web app: load → edit (tone, geometry) → lanes → bands → overlay.
+// Profiles are read from the original pixels through the edit's transform (or, to
+// compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=eaa84c3f";
-import { matrix, warp, frame, outline, cropValid, largestCrop, clampCrop } from "./transform.js?v=eaa84c3f";
-import { findBands, findLanes } from "./bands.js?v=eaa84c3f";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=eaa84c3f";
-import { median } from "./signal.js?v=eaa84c3f";
-import { drawIcons } from "./icons.js?v=eaa84c3f";
+import { readImage } from "./image.js?v=f1b74688";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f1b74688";
+import { bandsFromProfile, coreColumns, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f1b74688";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=f1b74688";
+import { median } from "./signal.js?v=f1b74688";
+import { drawIcons } from "./icons.js?v=f1b74688";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -16,10 +18,11 @@ const LABEL_SPACE = 26; // screen px above the overlay for lane numbers
 const state = {
   src: null,        // {grey, w, h, name}
   box: null,        // frame of the edited image: {x0, y0, W, H} (whole transformed image)
-  warped: null,     // geometry applied, W x H
+  m: null,          // the edit's transform (original pixel -> edited position), transform.js
+  warped: null,     // geometry applied, W x H (for display and lane placement)
   edited: null,     // geometry + tone
-  poly: null,       // original image outline after geometry, in edited-image pixels
-  crop: null,       // {x0, y0, x1, y1} in edited-image pixels (inclusive); automatic, draggable
+  crop: null,       // analysed rectangle {x0, y0, x1, y1}, edited-image pixels (inclusive)
+  cropUser: false,  // trimmed by hand (otherwise it follows the whole image)
   invert: false,
   bounds: null,     // lane boundaries in crop columns
   results: null,
@@ -63,6 +66,7 @@ function resetEdits(rerun = true) {
   state.invert = false;
   $("invert").setAttribute("aria-pressed", "false");
   state.crop = null;
+  state.cropUser = false;
   state.box = null;
   showValues();
   if (rerun) applyGeometry();
@@ -72,29 +76,37 @@ function applyGeometry() {
   const { grey, w, h } = state.src;
   const m = matrix(w, h, geometry());
   const box = frame(w, h, m);
-  if (state.crop && state.box) { // keep the crop on the same part of the image as the frame moves
-    const dx = state.box.x0 - box.x0, dy = state.box.y0 - box.y0;
-    state.crop = { x0: state.crop.x0 + dx, x1: state.crop.x1 + dx, y0: state.crop.y0 + dy, y1: state.crop.y1 + dy };
+  const full = { x0: 0, y0: 0, x1: box.W - 1, y1: box.H - 1 };
+  if (state.cropUser && state.crop && state.box) {
+    // a hand-trimmed rectangle stays on the same part of the image as the frame moves
+    const dx = state.box.x0 - box.x0, dy = state.box.y0 - box.y0, c = state.crop;
+    const moved = { x0: Math.max(c.x0 + dx, 0), x1: Math.min(c.x1 + dx, box.W - 1),
+                    y0: Math.max(c.y0 + dy, 0), y1: Math.min(c.y1 + dy, box.H - 1) };
+    state.crop = cropValid(moved, null, box.W, box.H) ? moved : full;
+  } else {
+    state.crop = full; // the whole image: blank corners just contribute nothing
   }
+  if (state.box && (state.box.W !== box.W || state.box.H !== box.H)) state.bounds = null;
   state.box = box;
+  state.m = m;
   state.warped = warp(grey, w, h, m, box);
-  state.poly = outline(w, h, m).map(([x, y]) => [x - box.x0, y - box.y0]);
-  if (!state.crop || !cropValid(state.crop, state.poly, box.W, box.H)) {
-    const cx = (w - 1) / 2 - box.x0, cy = (h - 1) / 2 - box.y0;
-    state.crop = largestCrop(state.poly, box.W, box.H, cx, cy, (w - 1) / 2, (h - 1) / 2);
-  }
   applyTone();
 }
 
-function applyTone() {
+// brightness, contrast and invert as one function of a pixel value
+function toneFunction() {
   const b = value("brightness");
   const f = Math.tan(((value("contrast") + 1) * Math.PI) / 4); // 0 → ×1; ±0.9 → ×0.08 / ×12.7
   const inv = state.invert;
-  state.edited = state.warped.map((v) => {
-    if (Number.isNaN(v)) return v;
+  return (v) => {
     const t = Math.min(Math.max((v - 0.5) * f + 0.5 + b, 0), 1);
     return inv ? 1 - t : t;
-  });
+  };
+}
+
+function applyTone() {
+  const tone = toneFunction();
+  state.edited = state.warped.map((v) => (Number.isNaN(v) ? v : tone(v)));
   drawEditor();
   analyse();
 }
@@ -167,16 +179,17 @@ editCanvas.addEventListener("pointermove", (e) => {
     : { x0: c.x0 + (drag.handle.x0 ? dx : 0), x1: c.x1 + (drag.handle.x1 ? dx : 0),
         y0: c.y0 + (drag.handle.y0 ? dy : 0), y1: c.y1 + (drag.handle.y1 ? dy : 0) };
   const { W: w, H: h } = state.box;
-  const next = clampCrop(state.crop, want, state.poly, w, h);
+  const next = clampCrop(state.crop, want, null, w, h);
   state.crop = { x0: Math.ceil(next.x0), y0: Math.ceil(next.y0), x1: Math.floor(next.x1), y1: Math.floor(next.y1) };
-  if (!cropValid(state.crop, state.poly, w, h)) state.crop = drag.crop;
+  if (!cropValid(state.crop, null, w, h)) state.crop = drag.crop;
   drawEditor();
 });
 
 editCanvas.addEventListener("pointerup", () => {
   if (!drag) return;
   drag = null;
-  state.bounds = null; // crop changed: place lanes again
+  state.cropUser = true;
+  state.bounds = null; // area changed: place lanes again
   analyse();
 });
 
@@ -198,20 +211,53 @@ function cropImage() {
   return { grey, w: cw, h: ch };
 }
 
+// Each lane's raw profile (mean darkness per row, NaN where a row has no pixels) and
+// near-black fraction, read either from the original pixels through the transform or
+// from the resampled edited image.
+function laneProfiles() {
+  const core = value("core");
+  if ($("source").value === "original") {
+    const { grey, w, h } = state.src;
+    return profilesFromOriginal(grey, w, h, state.m, state.box, state.crop, state.bounds, core,
+                                DEFAULTS.satLevel, toneFunction());
+  }
+  const { grey, w, h } = state.cropImg;
+  return lanePairs().map(([s, e]) => {
+    const [c0, c1] = coreColumns(s, e, core);
+    const mean = new Float64Array(h), black = new Float64Array(h);
+    for (let y = 0; y < h; y++) {
+      let sum = 0, n = 0, b = 0;
+      for (let x = c0; x < c1; x++) {
+        const v = grey[y * w + x];
+        if (Number.isNaN(v)) continue;
+        sum += 1 - v; n++;
+        if (v <= DEFAULTS.satLevel) b++;
+      }
+      mean[y] = n ? sum / n : NaN;
+      black[y] = n ? b / n : 0;
+    }
+    return { mean, black };
+  });
+}
+
+function computeBands() {
+  const opts = bandOptions();
+  state.results = laneProfiles().map((p) => bandsFromProfile(p.mean, p.black, opts));
+}
+
 let pending = false;
 function analyse() {
   if (pending) return;
   pending = true;
-  requestAnimationFrame(() => {
+  setTimeout(() => { // batch rapid slider changes; a timer also runs in background tabs
     pending = false;
     state.cropImg = cropImage();
     const { grey, w, h } = state.cropImg;
     const n = Math.max(1, Math.min(60, parseInt($("lanes").value, 10) || 1));
     if (!state.bounds || state.bounds.length !== n + 1 || state.bounds[n] !== w) state.bounds = findLanes(grey, w, h, n);
-    const opts = bandOptions();
-    state.results = lanePairs().map(([s, e]) => findBands(grey, w, h, s, e, opts));
+    computeBands();
     drawResults();
-  });
+  }, 0);
 }
 
 const lanePairs = () => state.bounds.slice(0, -1).map((b, i) => [Math.round(b), Math.round(state.bounds[i + 1])]);
@@ -229,8 +275,9 @@ function drawResults(active = -1) {
   drawDividers(ctx, state.bounds, top, h, px, active);
   drawOverlay(ctx, lanePairs(), state.results, top, px);
   const counts = state.results.map((r) => r.bands.length);
+  const from = $("source").value === "original" ? "original pixels" : "edited image";
   $("summary").textContent = `${counts.length} lanes, ${counts.reduce((a, b) => a + b, 0)} bands ` +
-    `(per lane: ${counts.join(", ")}). Rows and columns are in the cropped image.`;
+    `(per lane: ${counts.join(", ")}), read from the ${from}. Rows and columns are in the analysed area.`;
 }
 
 overlayCanvas.addEventListener("pointerdown", (e) => {
@@ -253,9 +300,7 @@ overlayCanvas.addEventListener("pointermove", (e) => {
   const b = state.bounds, i = laneDrag, gap = 4;
   const lo = i === 0 ? 0 : b[i - 1] + gap, hi = i === b.length - 1 ? state.cropImg.w : b[i + 1] - gap;
   b[i] = Math.round(Math.min(Math.max(p.x, lo), hi));
-  const { grey, w, h } = state.cropImg;
-  const opts = bandOptions();
-  state.results = lanePairs().map(([s, e]) => findBands(grey, w, h, s, e, opts));
+  computeBands();
   drawResults(i);
 });
 
@@ -288,9 +333,13 @@ $("dl-image").addEventListener("click", () => {
 });
 
 $("dl-csv").addEventListener("click", () => {
-  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "kind", "saturated", "snr"]];
+  // the edit settings go in every row, so a CSV records how it was made
+  const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
+  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "kind", "saturated", "snr", "read_from",
+                 ...GEOMETRY, ...TONE, "invert"]];
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) =>
-    rows.push([i + 1, s, e - 1, b.y, b.kind, b.saturated, b.snr.toFixed(1)])));
+    rows.push([i + 1, s, e - 1, b.y, b.kind, b.saturated, b.snr.toFixed(1), $("source").value,
+               ...edits, state.invert])));
   save(new Blob([rows.map((r) => r.join(",")).join("\n") + "\n"], { type: "text/csv" }), `${state.src.name}_bands.csv`);
 });
 
@@ -306,6 +355,8 @@ function showValues() {
 for (const id of GEOMETRY) $(id).addEventListener("input", () => { showValues(); state.src && applyGeometry(); });
 for (const id of TONE) $(id).addEventListener("input", () => { showValues(); state.src && applyTone(); });
 for (const id of BANDS) $(id).addEventListener("input", () => { showValues(); state.src && analyse(); });
+$("source").addEventListener("change", () => state.src && analyse());
+$("redo").addEventListener("click", () => state.src && analyse());
 for (const id of [...GEOMETRY, ...TONE]) {
   $(id).addEventListener("dblclick", () => { $(id).value = 0; $(id).dispatchEvent(new Event("input")); });
 }
@@ -317,7 +368,10 @@ $("invert").addEventListener("click", () => {
 $("reset-edits").addEventListener("click", () => resetEdits());
 $("lanes").addEventListener("change", () => { state.bounds = null; analyse(); });
 $("find-lanes").addEventListener("click", () => { state.bounds = null; analyse(); });
-window.addEventListener("resize", () => { if (state.src) { drawEditor(); drawResults(); } });
+window.addEventListener("resize", () => {
+  if (state.box) drawEditor();
+  if (state.cropImg && state.results) drawResults();
+});
 
 const drop = $("drop");
 $("browse").addEventListener("click", (e) => { e.stopPropagation(); $("file").click(); });

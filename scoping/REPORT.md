@@ -204,6 +204,16 @@ editing and the band-finding overlay:
   peak prominence and width definitions reimplemented. `tests/parity.html` runs it on
   the pixels written by `scoping/js_reference.py`: all 13 lanes of gel_02 give exactly
   the same bands as Python.
+- **Reading profiles through the transform.** Geometric edits resample the image: each
+  new pixel blends up to four originals. On gel_02 a half-pixel shift or a 2° rotation and
+  back loses 3–4 of 118 borderline bands. So the page reads profiles from the *original*
+  pixels: each is sent through the edit's transform to its place in the edited view and
+  counted once in that lane and row, never blended. No crop to the largest blank-free
+  rectangle is needed (blank corners hold no pixels), so the whole image is analysed.
+  Test (`tests/straighten.html`): a copy of gel_02 rotated 3°, straightened in the page,
+  with the same lanes as the original. Original pixels: 111 of 115 bands recovered,
+  2 extra. Edited image: 110 recovered, 10 extra. Both within 0.5 rows. The few missing
+  bands come from the test copy itself, which was resampled once to make it.
 - Masses, centre-lines and uncertainties are not in the web page yet.
 
 ## Known limitations

@@ -19,11 +19,16 @@ behind it.
      down (levels bands that slope across the gel); perspective narrows the top or
      bottom. Double-click a slider to reset it.
    - The whole edited image always stays in view, scaled to fit the display box.
-   - The analysed area is set automatically: the largest rectangle with no blank corners
-     (everything else is greyed out). It can be dragged smaller, e.g. to leave out labels
-     above the lanes, but never past the edge of the original image.
+   - The whole image is analysed; blank corners left by rotating contribute nothing. Drag
+     the rectangle's corners and edges to leave something out (e.g. labels above the
+     lanes); everything outside it is greyed out.
 3. **Lanes and bands**: set the number of lanes; they're placed at the clearest gaps
    between lanes, with lane widths kept regular. Drag the dashed dividers to adjust.
+   **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
+   Profiles are read from the **original pixels** by default: each pixel of the loaded
+   image is placed through the edits and counted once, never blended, so straightening
+   doesn't smooth the data. Switch to *edited image* to compare with reading the
+   resampled picture. The edit settings are written into every row of the bands CSV.
    Each lane's profile (mean darkness down its central columns) is drawn on the gel with
    the bands found in it: peaks (red), saturated peaks (black) and shoulders (orange:
    bands merged into a neighbour). Download the overlay, the edited image or a CSV of
@@ -43,6 +48,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |
+| `tests/straighten.html` | Straightens a 3°-rotated copy of the sample and compares reading original pixels with reading the edited image |
 | `tools/stamp_version.py` | Version stamps and counter for the web page (run before committing web changes) |
 | `gel_ed/load.py` | Python loader: any format to 16-bit greyscale |
 | `scoping/` | Python scoping work: band finding, lane centre-lines, masses with uncertainty. Write-up in [`scoping/REPORT.md`](scoping/REPORT.md), running log in [`scoping/NOTES.md`](scoping/NOTES.md) |

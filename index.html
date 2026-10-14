@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=eaa84c3f">
-  <script type="module" src="js/app.js?v=eaa84c3f"></script>
+  <link rel="stylesheet" href="css/style.css?v=f1b74688">
+  <script type="module" src="js/app.js?v=f1b74688"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="eaa84c3f">version 3</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="f1b74688">version 4</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -81,8 +81,8 @@
           </div>
           <div class="view">
             <div id="edit-stage" class="stage"><canvas id="edit-canvas"></canvas></div>
-            <p class="hint">The highlighted area is what's analysed: the largest rectangle with no blank corners.
-              Drag it, or its corners and edges, to trim it further (e.g. to leave out labels above the lanes).</p>
+            <p class="hint">The whole image is analysed; blank corners from rotating contribute nothing.
+              Drag the rectangle's corners and edges to leave something out (e.g. labels above the lanes).</p>
           </div>
         </div>
       </details>
@@ -94,11 +94,21 @@
             <fieldset>
               <legend>Lanes</legend>
               <label class="row">Number of lanes <input type="number" id="lanes" min="1" max="60" value="10"></label>
-              <button type="button" id="find-lanes" class="btn">Find lanes</button>
+              <div class="buttons">
+                <button type="button" id="find-lanes" class="btn">Find lanes</button>
+                <button type="button" id="redo" class="btn">Redo analysis</button>
+              </div>
               <p class="hint">Lanes are placed at the clearest gaps. Drag the dashed dividers to adjust.</p>
             </fieldset>
             <fieldset>
               <legend>Band finding</legend>
+              <label class="row">Read profiles from
+                <select id="source">
+                  <option value="original" selected>original pixels</option>
+                  <option value="edited">edited image</option>
+                </select></label>
+              <p class="hint">Original pixels: each pixel of the loaded image is placed through the edits and counted
+                once, never blended. Edited image: the resampled picture you see (for comparison).</p>
               <label class="slider">Threshold (× noise) <output data-for="k"></output>
                 <input type="range" id="k" min="2" max="20" step="0.5" value="6"></label>
               <label class="slider">Centre of lane used <output data-for="core"></output>
