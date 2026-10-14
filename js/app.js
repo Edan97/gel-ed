@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=df452940";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=df452940";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=df452940";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=df452940";
-import { median } from "./signal.js?v=df452940";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=df452940";
-import { LADDERS } from "./ladders.js?v=df452940";
-import { drawIcons } from "./icons.js?v=df452940";
+import { readImage } from "./image.js?v=e642f67e";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=e642f67e";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=e642f67e";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=e642f67e";
+import { median } from "./signal.js?v=e642f67e";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=e642f67e";
+import { LADDERS } from "./ladders.js?v=e642f67e";
+import { drawIcons } from "./icons.js?v=e642f67e";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -34,7 +34,7 @@ const state = {
   picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
   pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
   laneNotes: [],    // per lane: annotation text the user typed (undefined = not edited)
-  groups: [],       // lane groups: [{name, from, to}] (lane numbers, inclusive, continuous)
+  groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -396,8 +396,8 @@ function drawResults(active = -1) {
   $("summary").textContent = state.laneNote + `${state.results.length} lanes, ${found} bands found, ${marked} marked. ` +
     `Click a band to mark it, drag to move it, right-click to delete it. Profiles read from the ${from}.`;
   drawFigure();
-  drawLaneNotes();
-  drawLaneGroups();
+  drawLadderNotes();
+  drawAnnotations();
 }
 
 // A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
@@ -548,81 +548,103 @@ $("add-ladder").addEventListener("click", () => {
 state.ladders.push(newLadder(1)); // most gels have one ladder, in the first lane
 drawLadderCards();
 
-// ---------- lane annotations ----------
+// ---------- ladder notes, lane annotations and groups ----------
 
-// One editable field per lane found. Ladder lanes start as "Ladder: <name>"; anything
-// typed is kept (by lane number) until changed again.
-function drawLaneNotes() {
-  const list = $("lane-notes");
-  const n = state.bounds ? state.bounds.length - 1 : 0;
-  const ladderText = (k) => {
-    const lad = state.ladders.find((l) => l.lane === k);
-    return lad ? `Ladder: ${LADDERS[lad.type].name}` : "";
-  };
-  const rows = [...list.children];
-  for (let k = 1; k <= n; k++) {
-    let row = rows[k - 1];
-    if (!row) {
-      row = document.createElement("label");
-      row.className = "lane-note";
-      row.innerHTML = `<span class="lane-no"></span><input type="text">`;
-      const input = row.querySelector("input");
-      input.addEventListener("input", () => { state.laneNotes[parseInt(row.dataset.lane, 10)] = input.value; });
-      list.append(row);
-    }
-    row.dataset.lane = String(k);
-    row.querySelector(".lane-no").textContent = `Lane ${k}`;
-    const input = row.querySelector("input");
-    const text = state.laneNotes[k] !== undefined ? state.laneNotes[k] : ladderText(k);
-    if (document.activeElement !== input && input.value !== text) input.value = text;
-    input.placeholder = "Sample, treatment, …";
-  }
-  rows.slice(n).forEach((r) => r.remove());
-}
-
-// ---------- lane groups ----------
-
-// Each group: a name and a continuous run of lanes (from..to). Ranges are kept within
-// the lanes found; overlapping groups are flagged.
-function drawLaneGroups() {
-  const list = $("lane-groups");
-  if (list.contains(document.activeElement)) return; // don't rebuild under the user's cursor
-  const n = state.bounds ? state.bounds.length - 1 : 1;
-  list.replaceChildren();
-  state.groups.forEach((grp, i) => {
-    grp.from = Math.min(Math.max(1, grp.from), n);
-    grp.to = Math.min(Math.max(grp.from, grp.to), n);
+// Ladder box: one row per ladder, its text pre-filled with the selected ladder (kept
+// once edited) and a volume box (left empty).
+function drawLadderNotes() {
+  const box = $("ladder-notes");
+  if (box.contains(document.activeElement)) return;
+  box.replaceChildren();
+  state.ladders.forEach((lad, i) => {
+    lad.noteText = lad.noteText ?? null; // null = follow the selected ladder
     const row = document.createElement("div");
-    row.className = "lane-group";
-    row.innerHTML = `<input type="text" class="group-name" placeholder="Group name">
-      <span>lanes</span> <select class="group-from"></select> <span>to</span> <select class="group-to"></select>
-      <button type="button" class="link group-remove">Remove</button><span class="group-warn"></span>`;
-    const name = row.querySelector(".group-name");
-    name.value = grp.name;
-    name.addEventListener("input", () => { grp.name = name.value; });
-    for (const cls of ["group-from", "group-to"]) {
-      const sel = row.querySelector(`.${cls}`);
-      for (let k = 1; k <= n; k++) sel.add(new Option(String(k), String(k)));
-      sel.value = String(cls === "group-from" ? grp.from : grp.to);
-      sel.addEventListener("change", () => {
-        grp[cls === "group-from" ? "from" : "to"] = parseInt(sel.value, 10);
-        if (grp.from > grp.to) [grp.from, grp.to] = [grp.to, grp.from];
-        drawLaneGroups();
-      });
-    }
-    row.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(i, 1); drawLaneGroups(); });
-    const clash = state.groups.findIndex((o, j) => j !== i && o.from <= grp.to && grp.from <= o.to);
-    row.querySelector(".group-warn").textContent = clash >= 0 ? `Overlaps group ${clash + 1}` : "";
-    list.append(row);
+    row.className = "ladder-note-row";
+    row.innerHTML = `<span class="lane-no"></span><input type="text" class="ln-text">
+      <label class="vol">Volume <input type="text" class="ln-vol" placeholder="µL"></label>`;
+    row.querySelector(".lane-no").textContent = state.ladders.length > 1 ? `Ladder ${i + 1}` : "Ladder";
+    const text = row.querySelector(".ln-text"), vol = row.querySelector(".ln-vol");
+    text.value = lad.noteText ?? LADDERS[lad.type].name;
+    vol.value = lad.volume ?? "";
+    text.addEventListener("input", () => { lad.noteText = text.value; });
+    vol.addEventListener("input", () => { lad.volume = vol.value; });
+    box.append(row);
   });
 }
 
-$("add-group").addEventListener("click", () => {
-  const n = state.bounds ? state.bounds.length - 1 : 1;
-  const from = Math.min(n, state.groups.reduce((m, g) => Math.max(m, g.to), 0) + 1); // after the last group
-  state.groups.push({ name: "", from, to: n });
-  drawLaneGroups();
+// Lane annotations: one row per sample lane (ladder lanes are in the Ladder box), one
+// column per group. A group's lanes are set by clicking a cell and dragging down its
+// column, so a group is always a continuous run of lanes (from..to, lane numbers).
+let groupDrag = null; // {g, start}
+function drawAnnotations() {
+  const table = $("annot");
+  if (table.contains(document.activeElement) || groupDrag) return; // don't rebuild under the user
+  const n = state.bounds ? state.bounds.length - 1 : 0;
+  const ladderLanes = new Set(state.ladders.map((l) => l.lane));
+  const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k));
+  for (const g of state.groups) if (g.from && (g.from > n || g.to > n)) { g.from = g.to = null; }
+  const head = document.createElement("tr");
+  head.innerHTML = "<th>Lane</th><th>Annotation</th>";
+  state.groups.forEach((g, gi) => {
+    const th = document.createElement("th");
+    th.className = "group-head";
+    th.innerHTML = `<input type="text" class="group-name" placeholder="Group name"><button type="button" class="link group-remove" title="Remove this group">×</button>`;
+    const name = th.querySelector(".group-name");
+    name.value = g.name;
+    name.addEventListener("input", () => { g.name = name.value; });
+    th.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(gi, 1); drawAnnotations(); });
+    head.append(th);
+  });
+  const addTh = document.createElement("th");
+  addTh.innerHTML = `<button type="button" class="btn add-group">+ Add group</button>`;
+  addTh.querySelector("button").addEventListener("click", () => { state.groups.push({ name: "", from: null, to: null }); drawAnnotations(); });
+  head.append(addTh);
+  const rows = lanes.map((k) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="lane-no">Lane ${k}</td><td><input type="text" class="lane-text" placeholder="Sample, treatment, …"></td>`;
+    const input = tr.querySelector(".lane-text");
+    input.value = state.laneNotes[k] ?? "";
+    input.addEventListener("input", () => { state.laneNotes[k] = input.value; });
+    state.groups.forEach((g, gi) => {
+      const td = document.createElement("td");
+      td.className = "group-cell";
+      td.dataset.g = String(gi);
+      td.dataset.lane = String(k);
+      tr.append(td);
+    });
+    tr.append(document.createElement("td"));
+    return tr;
+  });
+  table.replaceChildren(head, ...rows);
+  paintGroups();
+}
+
+function paintGroups() {
+  for (const td of $("annot").querySelectorAll(".group-cell")) {
+    const g = state.groups[+td.dataset.g], k = +td.dataset.lane;
+    td.classList.toggle("on", g.from !== null && k >= g.from && k <= g.to);
+  }
+}
+
+$("annot").addEventListener("pointerdown", (e) => {
+  const td = e.target.closest(".group-cell");
+  if (!td) return;
+  e.preventDefault();
+  const g = state.groups[+td.dataset.g], k = +td.dataset.lane;
+  if (g.from === k && g.to === k) { g.from = g.to = null; paintGroups(); return; } // clear a lone cell
+  groupDrag = { g, start: k };
+  g.from = g.to = k;
+  paintGroups();
 });
+$("annot").addEventListener("pointerover", (e) => {
+  const td = e.target.closest(".group-cell");
+  if (!groupDrag || !td || state.groups[+td.dataset.g] !== groupDrag.g) return;
+  const k = +td.dataset.lane;
+  groupDrag.g.from = Math.min(groupDrag.start, k);
+  groupDrag.g.to = Math.max(groupDrag.start, k);
+  paintGroups();
+});
+window.addEventListener("pointerup", () => { groupDrag = null; });
 
 // ---------- figure ----------
 

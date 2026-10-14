@@ -59,11 +59,12 @@ behind it.
 Band finding settings: threshold (in multiples of each lane's noise), how much of the
 lane's centre is used, smoothing, and the noise window. Defaults match the Python version.
 
-   **Lane annotations**: an editable text field per lane under the overlay; ladder lanes
-   start as "Ladder: <name>". **Lane groups**: name continuous runs of lanes (e.g.
-   non-reducing / reducing); overlapping groups are flagged. (Neither is used on the
-   figure or in the CSV yet.)
-4. **Figure**: the analysed gel, outlined, with the ladder sizes (kDa) marked down the side
+   **Ladder** (under the overlay): the selected ladder's name (editable) and its
+   volume. **Lane annotations**: a text field per sample lane, and one column per
+   **group** (e.g. non-reducing / reducing): name it at the top, then click a lane's
+   cell and drag down to cover a continuous run of lanes. (Not used on the figure or
+   in the CSV yet.)
+4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
    (the leftmost ladder on the left, a second ladder on the right); sizes that would
    overlap get a longer line and sit further out. Download as PNG or copy to the
    clipboard. A **figure caption** box underneath can be copied too.

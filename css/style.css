@@ -185,20 +185,24 @@ canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touc
 canvas.figure { max-width: 100%; width: auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
 
 h3.sub { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
-.lane-notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.35rem 1rem; }
-.lane-note { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
-.lane-note .lane-no { flex: none; width: 3.6rem; color: var(--text-secondary); }
-.lane-note input, #caption {
+.ladder-notes { display: flex; flex-direction: column; gap: 0.35rem; }
+.ladder-note-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; flex-wrap: wrap; }
+.ladder-note-row .ln-text { flex: 1; min-width: 14rem; }
+.ladder-note-row .vol { display: flex; align-items: center; gap: 0.35rem; }
+.ladder-note-row .ln-vol { width: 6rem; }
+.lane-no { color: var(--text-secondary); white-space: nowrap; width: 4.5rem; flex: none; }
+.annot-wrap { overflow-x: auto; }
+table.annot { border-collapse: collapse; font-size: 0.9rem; user-select: none; }
+table.annot th, table.annot td { padding: 0.15rem 0.35rem; text-align: left; vertical-align: middle; }
+table.annot th { font-weight: 600; }
+table.annot .lane-text { width: 18rem; }
+.group-head { white-space: nowrap; }
+.group-head .group-name { width: 8rem; }
+.group-cell { width: 8.6rem; height: 1.7rem; border: 1px solid var(--border); background: var(--page); cursor: pointer; }
+.group-cell.on { background: color-mix(in srgb, var(--accent) 35%, var(--page)); border-color: var(--accent); }
+.ladder-notes input, table.annot input, #caption {
   font: inherit; color: inherit; background: var(--page);
   border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem; min-width: 0;
 }
-.lane-note input { flex: 1; }
 .caption-label { display: block; font-weight: 600; margin: 0.9rem 0 0.3rem; }
 #caption { display: block; width: 100%; resize: vertical; margin-bottom: 0.5rem; }
-.lane-groups { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.4rem 0 0.6rem; }
-.lane-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
-.lane-group .group-name {
-  font: inherit; color: inherit; background: var(--page);
-  border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem; width: 14rem; max-width: 100%;
-}
-.lane-group .group-warn { color: var(--error); }
