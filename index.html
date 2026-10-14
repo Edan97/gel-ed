@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=7ee4169e">
-  <script type="module" src="js/app.js?v=7ee4169e"></script>
+  <link rel="stylesheet" href="css/style.css?v=0ce2184c">
+  <script type="module" src="js/app.js?v=0ce2184c"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="7ee4169e">version 23</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="0ce2184c">version 24</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -174,8 +174,9 @@
               <summary>Band annotations</summary>
               <p class="hint">Each band you've marked, with its estimated molecular weight ± uncertainty. Masses are
                 corrected for each lane running differently from the lane next to the ladder (matched on where their
-                profiles rise and fall; assumed to have run like the ladder). The ± combines band position, the
-                leftover mismatch after that correction, and ladder calibration. "?" = the lane matches poorly.</p>
+                profiles rise and fall; assumed to have run like the ladder). The ± combines band position, the band's
+                own width, the ladder bands' width, the leftover mismatch after that correction, and ladder
+                calibration. "?" = the lane matches poorly.</p>
               <div class="annot-wrap"><table id="band-table" class="annot band-table"></table></div>
             </details>
           </div>
@@ -194,8 +195,13 @@
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>
         <label class="caption-label" for="caption">Figure caption</label>
-        <textarea id="caption" rows="4" placeholder="Write the figure caption here."></textarea>
-        <div class="buttons"><button type="button" id="caption-copy" class="btn">Copy caption</button></div>
+        <p class="hint">Written from the ladder and lane annotations (labels, annotations and volumes, where filled in)
+          and the groups. It follows them until you edit it; Regenerate starts again from them.</p>
+        <textarea id="caption" rows="5" placeholder="Fill in the lane annotations to build a caption, or write one here."></textarea>
+        <div class="buttons">
+          <button type="button" id="caption-copy" class="btn">Copy caption</button>
+          <button type="button" id="caption-regenerate" class="btn">Regenerate</button>
+        </div>
       </section>
     </div>
   </main>

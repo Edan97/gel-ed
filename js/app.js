@@ -2,15 +2,15 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=7ee4169e";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=7ee4169e";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=7ee4169e";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=7ee4169e";
-import { median } from "./signal.js?v=7ee4169e";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=7ee4169e";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=7ee4169e";
-import { LADDERS } from "./ladders.js?v=7ee4169e";
-import { drawIcons } from "./icons.js?v=7ee4169e";
+import { readImage } from "./image.js?v=0ce2184c";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=0ce2184c";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=0ce2184c";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=0ce2184c";
+import { median } from "./signal.js?v=0ce2184c";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=0ce2184c";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=0ce2184c";
+import { LADDERS } from "./ladders.js?v=0ce2184c";
+import { drawIcons } from "./icons.js?v=0ce2184c";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -38,6 +38,7 @@ const state = {
   laneNotes: [],    // per lane: annotation (not on the figure)
   laneVols: [],     // per lane: volume loaded (µL), as typed
   aligns: {},       // running correction per "lane:refLane", cleared when bands are found again
+  captionAuto: true, // the caption follows the annotations until the user edits it
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}
@@ -277,6 +278,16 @@ function resetLadders() {
 }
 
 const fmtKda = (k) => (k >= 10 ? k.toFixed(0) : k.toFixed(1));
+const medianOf = (v) => { if (!v.length) return 0; const t = [...v].sort((a, b) => a - b); return t[Math.floor(t.length / 2)]; };
+// a ladder's band spread interpolated between its two nearest bands at reference row y
+function spreadAt(c, y) {
+  const { ys, spread } = c;
+  if (y <= ys[0]) return spread[0];
+  if (y >= ys[ys.length - 1]) return spread[spread.length - 1];
+  let i = 0;
+  while (y > ys[i + 1]) i++;
+  return spread[i] + ((spread[i + 1] - spread[i]) * (y - ys[i])) / (ys[i + 1] - ys[i]);
+}
 
 // Ladder markers (picked automatically unless moved by hand), each ladder's calibration
 // (log10 kDa against row, point-to-point PCHIP as in Python), and every other band's mass
@@ -318,7 +329,11 @@ function assignLadders() {
       lad.note = "Ladder bands are out of order: drag them back so sizes fall from top to bottom.";
     } else if (m.length >= 2) {
       const ys = m.map((q) => q.y), lk = m.map((q) => Math.log10(q.kda));
-      lad.calib = { f: pchip(ys, lk), loo: ladderLoo(ys, lk),
+      // each ladder band's own spread (FWHM / 2.355, rows); placed ones use the lane's median
+      const lb = state.results[lad.lane - 1].bands;
+      const typical = medianOf(lb.filter((b) => b.fwhm).map((b) => b.fwhm)) / 2.355 || 3;
+      const spread = m.map((q) => { const b = lb.find((d) => Math.abs(d.y - q.y) <= 1); return b && b.fwhm ? b.fwhm / 2.355 : typical; });
+      lad.calib = { f: pchip(ys, lk), loo: ladderLoo(ys, lk), ys, spread,
                     y0: m[0].y, y1: m[m.length - 1].y, kMax: m[0].kda, kMin: m[m.length - 1].kda };
     }
   }
@@ -370,9 +385,15 @@ function assignLadders() {
           out.label = fmtKda(out.kda);
           // uncertainty (log10): band position and leftover running mismatch (rows), through
           // the curve's local slope, plus calibration (ladder leave-one-out)
-          const found = state.results[j].bands.find((b) => Math.abs(b.y - q.y) <= 1);
+          const laneBands = state.results[j].bands;
+          const found = laneBands.find((b) => Math.abs(b.y - q.y) <= 1);
           const sy = found && !q.created ? found.sigmaY : 3; // 3 rows for a band placed by hand
-          const rows = Math.hypot(sy * al.stretch, al.sigma ?? worst);
+          // the band's own spread (FWHM / 2.355): a band covers a range of rows, not one row;
+          // shoulders and bands placed by hand use the lane's median
+          const typical = medianOf(laneBands.filter((b) => b.fwhm).map((b) => b.fwhm)) / 2.355 || 3;
+          const sw = found && found.fwhm && !q.created ? found.fwhm / 2.355 : typical;
+          const sl = spreadAt(c, yr); // the ladder bands' spread at this row (their positions are as uncertain)
+          const rows = Math.hypot(Math.hypot(sy, sw) * al.stretch, al.sigma ?? worst, sl);
           const slope = Math.abs(c.f(Math.min(yr + 0.5, c.y1)) - c.f(Math.max(yr - 0.5, c.y0)));
           const sd = Math.hypot(slope * rows, c.loo ? c.loo(yr) : 0);
           out.pm = out.kda * (10 ** sd - 1);
@@ -459,6 +480,7 @@ function drawResults(active = -1) {
   drawLadderNotes();
   drawAnnotations();
   drawBandNotes();
+  updateCaption();
 }
 
 // A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
@@ -637,8 +659,8 @@ function drawLadderNotes() {
     const text = row.querySelector(".ln-text"), vol = row.querySelector(".ln-vol");
     text.value = lad.noteText ?? LADDERS[lad.type].name;
     vol.value = lad.volume ?? "";
-    text.addEventListener("input", () => { lad.noteText = text.value; });
-    vol.addEventListener("input", () => { lad.volume = vol.value; });
+    text.addEventListener("input", () => { lad.noteText = text.value; updateCaption(); });
+    vol.addEventListener("input", () => { lad.volume = vol.value; updateCaption(); });
     box.append(row);
   });
 }
@@ -662,7 +684,7 @@ function drawAnnotations(force = false) {
     th.innerHTML = `<input type="text" class="group-name" placeholder="Group name"><button type="button" class="link group-remove" title="Remove this group">×</button>`;
     const name = th.querySelector(".group-name");
     name.value = g.name;
-    name.addEventListener("input", () => { g.name = name.value; drawFigure(); });
+    name.addEventListener("input", () => { g.name = name.value; drawFigure(); updateCaption(); });
     th.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(gi, 1); drawAnnotations(true); });
     head.append(th);
   });
@@ -683,11 +705,11 @@ function drawAnnotations(force = false) {
     const note = tr.querySelector(".lane-text"), vol = tr.querySelector(".lane-vol");
     note.value = state.laneNotes[k] ?? "";
     vol.value = state.laneVols[k] ?? "";
-    note.addEventListener("input", () => { state.laneNotes[k] = note.value; });
-    vol.addEventListener("input", () => { state.laneVols[k] = vol.value; });
+    note.addEventListener("input", () => { state.laneNotes[k] = note.value; updateCaption(); });
+    vol.addEventListener("input", () => { state.laneVols[k] = vol.value; updateCaption(); });
     const id = tr.querySelector(".lane-id");
     id.value = state.laneIds[k] ?? String(k);
-    id.addEventListener("input", () => { state.laneIds[k] = id.value; drawFigure(); });
+    id.addEventListener("input", () => { state.laneIds[k] = id.value; drawFigure(); updateCaption(); });
     state.groups.forEach((g, gi) => {
       const td = document.createElement("td");
       td.className = "group-cell";
@@ -727,7 +749,7 @@ $("annot").addEventListener("pointerover", (e) => {
   groupDrag.g.to = Math.max(groupDrag.start, k);
   paintGroups();
 });
-window.addEventListener("pointerup", () => { if (groupDrag) { groupDrag = null; drawFigure(); } });
+window.addEventListener("pointerup", () => { if (groupDrag) { groupDrag = null; drawFigure(); updateCaption(); } });
 
 // ---------- band annotations ----------
 
@@ -754,6 +776,41 @@ function drawBandNotes() {
   });
   table.replaceChildren(head, ...rows);
 }
+
+// ---------- figure caption ----------
+
+// A caption from what's filled in: each lane in order with its label, annotation and
+// volume (ladders: the ladder's text and volume), lanes with nothing filled left out,
+// then the groups with their lanes. Human-readable, e.g.
+//   "Lane 1: MagicMark™ XP Western Protein Standard (5 µL). Lane 2: AV/+ neat (10 µL).
+//    Groups: + CPI, lanes 2–7; Veh (no CPI), lanes 8–13."
+function generateCaption() {
+  if (!state.bounds) return "";
+  const n = state.bounds.length - 1;
+  const vol = (v) => (v && v.trim() ? ` (${v.trim().replace(/\s*(µ|u)l$/i, "")} µL)` : "");
+  const lines = [];
+  for (let k = 1; k <= n; k++) {
+    const lad = state.ladders.find((l) => l.lane === k);
+    const label = state.laneIds[k] ?? String(k);
+    if (lad) {
+      lines.push(`Lane ${label}: ${(lad.noteText ?? LADDERS[lad.type].name).trim()}${vol(lad.volume)}.`);
+      continue;
+    }
+    const text = (state.laneNotes[k] ?? "").trim(), v = vol(state.laneVols[k]);
+    if (text || v) lines.push(`Lane ${label}: ${text || "sample"}${v}.`);
+  }
+  const range = (g) => (g.from === g.to ? `lane ${g.from}` : `lanes ${g.from}–${g.to}`);
+  const groups = state.groups.filter((g) => g.from !== null && g.name.trim());
+  if (groups.length) lines.push(`Groups: ${groups.map((g) => `${g.name.trim()}, ${range(g)}`).join("; ")}.`);
+  return lines.join(" ");
+}
+
+function updateCaption() {
+  if (state.captionAuto) $("caption").value = generateCaption();
+}
+
+$("caption").addEventListener("input", () => { state.captionAuto = false; }); // edited: stop following
+$("caption-regenerate").addEventListener("click", () => { state.captionAuto = true; updateCaption(); });
 
 // ---------- figure ----------
 

@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=7ee4169e";
+import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=0ce2184c";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -91,8 +91,8 @@ export function bandsFromProfile(meanIn, blackFrac, opts = {}) {
   };
   const bands = [
     ...peaks.map((p) => ({ y: first + p.i, kind: "peak", height: p.prom, snr: p.prom / noise, saturated: !!satNear[p.i],
-                           sigmaY: sigmaPeak(p) })),
-    ...shoulders.map((c) => ({ y: first + c, kind: "shoulder", sigmaY: 2, height: prof[c] - localMin[c],
+                           sigmaY: sigmaPeak(p), fwhm: p.width })),
+    ...shoulders.map((c) => ({ y: first + c, kind: "shoulder", sigmaY: 2, fwhm: null, height: prof[c] - localMin[c],
                                snr: (prof[c] - localMin[c]) / noise, saturated: false })),
   ].sort((a, b) => a.y - b.y);
   full.set(prof, first);

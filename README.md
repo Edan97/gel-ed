@@ -68,14 +68,17 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
    uncertainty and an annotation, also in the bands CSV. Masses are corrected for each
    lane running differently from the lane next to its ladder (a shift and slight
    stretch matched on the lane profiles, as in the Python version); the ± combines band
-   position, the leftover mismatch after that correction, and ladder calibration.
+   position, the band's own width (FWHM/2.355) and the ladder bands' width, the leftover
+   mismatch after that correction, and ladder calibration.
    Lanes that match poorly are flagged "?". Ladder sizes with no band found are placed by estimate
    (pale) so they can be dragged onto the right band.
 4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
    (the leftmost ladder on the left, a second ladder on the right); sizes that would
    overlap get a longer line and sit further out. Above the gel: lane labels and group
    bars with names (groups that don't overlap share a row); each can be switched off. Download as PNG
-   or copy to the clipboard. A **figure caption** box underneath can be copied too.
+   or copy to the clipboard. The **figure caption** underneath is written from the
+   ladder and lane annotations (label, annotation and volume where filled in) and the
+   groups; it follows them until edited (Regenerate starts again) and can be copied.
 
 ## Repository layout
 

@@ -8,7 +8,7 @@
 // compare; that transform is for matching only. ASSUMPTION: the reference lane ran like
 // the ladder (the ladder shares no bands with the samples, so this can't be checked).
 
-import { gaussian1d } from "./signal.js?v=7ee4169e";
+import { gaussian1d } from "./signal.js?v=0ce2184c";
 
 // where a profile rises and falls, at a scale where faint and strong lanes compare
 export function matchSignal(profile, noise) {
