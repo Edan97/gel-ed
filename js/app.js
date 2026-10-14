@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=24d8e66a";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=24d8e66a";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=24d8e66a";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter } from "./draw.js?v=24d8e66a";
-import { median } from "./signal.js?v=24d8e66a";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=24d8e66a";
-import { LADDERS } from "./ladders.js?v=24d8e66a";
-import { drawIcons } from "./icons.js?v=24d8e66a";
+import { readImage } from "./image.js?v=d0e06460";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=d0e06460";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=d0e06460";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=d0e06460";
+import { median } from "./signal.js?v=d0e06460";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=d0e06460";
+import { LADDERS } from "./ladders.js?v=d0e06460";
+import { drawIcons } from "./icons.js?v=d0e06460";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -312,7 +312,7 @@ function assignLadders() {
     const near = state.ladders.filter((l) => l.calib)
       .sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane)) - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
     return [...(state.picks[j] || [])].sort((a, b) => a.y - b.y).map((q, n) => {
-      const out = { y: q.y, x: bandCentre(grey, w, h, lane[0], lane[1], q.y), name: `${j + 1}.${bandLetter(n)}`,
+      const out = { ref: q, y: q.y, x: bandCentre(grey, w, h, lane[0], lane[1], q.y), name: `${j + 1}.${bandLetter(n)}`,
                     created: q.created, kda: null, label: "" };
       if (near) {
         const c = near.calib;
@@ -329,8 +329,7 @@ function assignLadders() {
 }
 
 // Clicking on a band marks it: the nearest band found in that lane (within 15 screen
-// px), or a new one exactly where clicked if none was found. Clicking a marked band again
-// unmarks it.
+// px), or a new one exactly where clicked if none was found. (Right-click deletes.)
 function clickBand(p) {
   const top = overlayCanvas.height - state.cropImg.h;
   const y = Math.round(p.y - top);
@@ -339,16 +338,17 @@ function clickBand(p) {
   if (lane < 0) return;
   const picks = (state.picks[lane] = state.picks[lane] || []);
   const tol = 15 * p.px;
-  const already = picks.findIndex((q) => Math.abs(q.y - y) <= 8 * p.px);
-  if (already >= 0) picks.splice(already, 1);
-  else {
-    const snap = state.results[lane].bands.map((b) => b.y).sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
-    if (snap !== undefined && Math.abs(snap - y) <= tol) {
-      if (!picks.some((q) => q.y === snap)) picks.push({ y: snap, created: false });
-    } else picks.push({ y, created: true });
-  }
+  if (picks.some((q) => Math.abs(q.y - y) <= 8 * p.px)) return; // already marked
+  const { y: at, snapped } = snapRow(lane, y, tol);
+  if (!picks.some((q) => q.y === at)) picks.push({ y: at, created: !snapped });
   assignLadders();
   drawResults();
+}
+
+// The nearest band found in a lane within tol rows of y, else y itself.
+function snapRow(lane, y, tol) {
+  const near = state.results[lane].bands.map((b) => b.y).sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
+  return near !== undefined && Math.abs(near - y) <= tol ? { y: near, snapped: true } : { y, snapped: false };
 }
 
 let pending = false;
@@ -392,26 +392,43 @@ function drawResults(active = -1) {
   const marked = state.pickMarks.reduce((a, m) => a + m.length, 0);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
   $("summary").textContent = state.laneNote + `${state.results.length} lanes, ${found} bands found, ${marked} marked. ` +
-    `Click a band to mark it; click it again to unmark. Profiles read from the ${from}.`;
+    `Click a band to mark it, drag to move it, right-click to delete it. Profiles read from the ${from}.`;
+  drawFigure();
 }
 
-// A ladder marker under the pointer: {lane, mark}. Only in the circles view.
+// A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
+// Only in the circles view.
 let markDrag = null;
 let clickStart = null; // a press that isn't on a marker or divider: a click on a band if it doesn't move
 function markerAt(p) {
   if (!state.marks || $("show-profiles").getAttribute("aria-pressed") === "true") return null;
   const top = overlayCanvas.height - state.cropImg.h;
   let best = null, dist = 10 * p.px;
-  state.marks.forEach((marks, lane) => marks.forEach((q) => {
+  const look = (kind) => (marks, lane) => marks.forEach((q) => {
     const d = Math.hypot(q.x - p.x, top + q.y - p.y);
-    if (d <= dist) { best = { lane, mark: q }; dist = d; }
-  }));
+    if (d <= dist) { best = { kind, lane, mark: q }; dist = d; }
+  });
+  state.marks.forEach(look("ladder"));
+  (state.pickMarks || []).forEach(look("pick"));
   return best;
 }
+
+// Right-click on a marked band deletes it.
+overlayCanvas.addEventListener("contextmenu", (e) => {
+  if (!state.bounds) return;
+  const hit = markerAt(canvasPoint(overlayCanvas, e));
+  if (!hit || hit.kind !== "pick") return;
+  e.preventDefault();
+  const picks = state.picks[hit.lane];
+  picks.splice(picks.indexOf(hit.mark.ref), 1);
+  assignLadders();
+  drawResults();
+});
 
 overlayCanvas.addEventListener("pointerdown", (e) => {
   if (!state.bounds) return;
   const p = canvasPoint(overlayCanvas, e);
+  if (e.button !== 0) return; // right-click is handled by "contextmenu"
   const hit = markerAt(p);
   if (hit) {
     markDrag = { ...hit, x: hit.mark.x, y: hit.mark.y };
@@ -431,9 +448,10 @@ overlayCanvas.addEventListener("pointerdown", (e) => {
 
 overlayCanvas.addEventListener("pointermove", (e) => {
   const p = canvasPoint(overlayCanvas, e);
-  if (markDrag) {
-    markDrag.x = p.x;
-    markDrag.y = p.y - (overlayCanvas.height - state.cropImg.h);
+  if (markDrag) { // moves stay inside the lane
+    const [s0, e0] = lanePairs()[markDrag.lane];
+    markDrag.x = Math.min(Math.max(p.x, s0), e0 - 1);
+    markDrag.y = Math.min(Math.max(p.y - (overlayCanvas.height - state.cropImg.h), 0), state.cropImg.h - 1);
     drawResults();
     return;
   }
@@ -449,9 +467,10 @@ overlayCanvas.addEventListener("pointermove", (e) => {
   drawResults(i);
 });
 
-// Dropping a ladder marker: it snaps to the nearest band found in its lane (within 15
-// screen px), otherwise stays where it was dropped. Dropped on another of the ladder's
-// markers, the two swap. Moved markers stay until the geometry, area, lanes or ladder change.
+// Dropping a ladder marker or marked band: it snaps to the nearest band found in its lane
+// (within 15 screen px), otherwise stays where it was dropped. A ladder marker dropped on
+// another of the ladder's markers swaps with it; a marked band dropped on another marked
+// band merges with it. Moves stay until the geometry, area, lanes or ladder change.
 overlayCanvas.addEventListener("pointerup", (e) => {
   if (clickStart) {
     const p = canvasPoint(overlayCanvas, e), s0 = clickStart;
@@ -461,13 +480,19 @@ overlayCanvas.addEventListener("pointerup", (e) => {
   }
   if (markDrag) {
     const p = canvasPoint(overlayCanvas, e);
-    const { lane, mark } = markDrag;
+    const { kind, lane, mark } = markDrag;
+    const dropped = Math.round(markDrag.y);
     markDrag = null;
+    const { y, snapped } = snapRow(lane, dropped, 15 * p.px);
+    if (kind === "pick") {
+      const picks = state.picks[lane], me = mark.ref;
+      if (picks.some((q) => q !== me && Math.abs(q.y - y) <= 2)) picks.splice(picks.indexOf(me), 1);
+      else { me.y = y; me.created = !snapped; }
+      assignLadders();
+      drawResults();
+      return;
+    }
     const lad = state.ladders[mark.ladder];
-    let y = Math.round(p.y - (overlayCanvas.height - state.cropImg.h));
-    y = Math.min(Math.max(y, 0), state.cropImg.h - 1);
-    const snap = state.results[lane].bands.map((b) => b.y).sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
-    if (snap !== undefined && Math.abs(snap - y) <= 15 * p.px) y = snap;
     const me = lad.markers[mark.i];
     const other = lad.markers.find((q) => q !== me && Math.abs(q.y - y) <= 2);
     if (other) other.y = me.y;
@@ -518,6 +543,35 @@ $("add-ladder").addEventListener("click", () => {
 });
 state.ladders.push(newLadder(1)); // most gels have one ladder, in the first lane
 drawLadderCards();
+
+// ---------- figure ----------
+
+// The analysed gel with ladder sizes down the side: the leftmost ladder on the left, a
+// second ladder on the right. (More than two ladders: only those two are shown, for now.)
+function drawFigure() {
+  const { grey, w, h } = state.cropImg;
+  const placed = state.ladders.filter((l) => l.markers && l.markers.length).sort((a, b) => a.lane - b.lane);
+  const side = (l) => (l ? [...l.markers].sort((a, b) => a.y - b.y).map((q) => ({ y: q.y, kda: q.kda })) : null);
+  renderFigure($("figure-canvas"), grey, w, h, side(placed[0]), placed.length > 1 ? side(placed[placed.length - 1]) : null);
+  $("figure-note").textContent = placed.length > 2
+    ? `${placed.length} ladders: only the leftmost and rightmost are marked on the figure.` : "";
+}
+
+$("fig-download").addEventListener("click", () => {
+  $("figure-canvas").toBlob((b) => save(b, `${state.src.name}_figure.png`));
+});
+
+// The clipboard is asked during the click itself, with a promise of the PNG: browsers
+// (Safari especially) refuse clipboard writes that start after the click has finished.
+$("fig-copy").addEventListener("click", async () => {
+  const png = new Promise((resolve) => $("figure-canvas").toBlob(resolve, "image/png"));
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+    $("figure-note").textContent = "Copied to the clipboard.";
+  } catch (err) {
+    $("figure-note").textContent = `Couldn't copy (${err.message}); use Download instead.`;
+  }
+});
 
 // ---------- downloads ----------
 

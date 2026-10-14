@@ -180,3 +180,6 @@ canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touc
                 border-left: 9px solid #e8730c; }
 
 #workspace[hidden] { display: none; }
+
+#figure-card .buttons { margin-bottom: 0.5rem; }
+canvas.figure { max-width: 100%; width: auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }

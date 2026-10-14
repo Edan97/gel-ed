@@ -40,10 +40,14 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
       ctx.strokeStyle = COLOURS.peak;
       ctx.lineWidth = 1.8 * px;
       for (const q of (picks && picks[li]) || []) {
+        const moving = drag && drag.mark === q;
+        const x = moving ? drag.x : q.x, y = top + (moving ? drag.y : q.y);
+        ctx.globalAlpha = moving ? 0.6 : 1;
         ctx.beginPath();
-        ctx.arc(q.x, top + q.y, 6 * px, 0, 2 * Math.PI);
+        ctx.arc(x, y, 6 * px, 0, 2 * Math.PI);
         ctx.stroke();
-        label(ctx, q.name, q.x + 9 * px, top + q.y, px, "#222222");
+        ctx.globalAlpha = 1;
+        label(ctx, q.name, x + 9 * px, y, px, "#222222");
       }
       for (const q of (marks && marks[li]) || []) {
         const moving = drag && drag.mark === q;
@@ -51,10 +55,10 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
         ctx.fillStyle = COLOURS.peak;
         ctx.globalAlpha = moving ? 0.6 : 1;
         ctx.beginPath();
-        ctx.arc(x, y, 6.5 * px, 0, 2 * Math.PI);
+        ctx.arc(x, y, 4 * px, 0, 2 * Math.PI);
         ctx.fill();
         ctx.globalAlpha = 1;
-        label(ctx, String(q.kda), x + 9.5 * px, y, px, COLOURS.peak);
+        label(ctx, String(q.kda), x + 7 * px, y, px, COLOURS.peak);
       }
       return;
     }
@@ -134,4 +138,46 @@ export function drawDividers(ctx, bounds, top, height, px, active = -1) {
     ctx.stroke();
   });
   ctx.restore();
+}
+
+// A figure: the gel (analysed area) on white, with ladder sizes marked down the side:
+// left = [{y, kda}] for the left side, right = the same for the right side (or null).
+// Drawn at the gel's own resolution; text and ticks scale with its height.
+export function renderFigure(canvas, grey, w, h, left, right) {
+  const fs = Math.max(12, Math.round(h / 45)), tick = Math.round(fs * 0.7), gap = Math.round(fs * 0.35);
+  const ctx = canvas.getContext("2d");
+  const font = `${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.font = font;
+  const textW = (side) => (side ? Math.max(ctx.measureText("kDa").width, ...side.map((q) => ctx.measureText(String(q.kda)).width)) : 0);
+  const margin = (side) => (side ? Math.ceil(textW(side) + tick + gap + fs * 0.5) : Math.round(fs * 0.5));
+  const ml = margin(left), mr = margin(right), mt = Math.round(fs * 1.6), mb = Math.round(fs * 0.6);
+  canvas.width = w + ml + mr;
+  canvas.height = h + mt + mb;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const gel = new OffscreenCanvas(w, h);
+  const g = gel.getContext("2d");
+  g.putImageData(greyToImageData(g, grey, w, h), 0, 0);
+  ctx.drawImage(gel, ml, mt);
+  ctx.fillStyle = ctx.strokeStyle = "#000000";
+  ctx.lineWidth = Math.max(1, fs / 10);
+  ctx.font = font;
+  ctx.textBaseline = "middle";
+  const side = (marks, x0, dir) => {
+    if (!marks) return;
+    ctx.textAlign = dir < 0 ? "right" : "left";
+    for (const q of marks) {
+      const y = mt + q.y;
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x0 + dir * tick, y);
+      ctx.stroke();
+      ctx.fillText(String(q.kda), x0 + dir * (tick + gap), y);
+    }
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("kDa", x0 + dir * (tick + gap), mt - fs * 0.45);
+    ctx.textBaseline = "middle";
+  };
+  side(left, ml, -1);
+  side(right, ml + w, 1);
 }

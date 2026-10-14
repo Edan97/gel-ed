@@ -4,7 +4,7 @@
 // same weights as the Python loader (ITU-R 601: 0.299 R + 0.587 G + 0.114 B); a grey
 // image stored as RGB stays exact, and colour luma is rounded to whole levels as in Python.
 
-import { roundHalfEven } from "./signal.js?v=24d8e66a";
+import { roundHalfEven } from "./signal.js?v=d0e06460";
 
 export async function readImage(file) {
   const buf = await file.arrayBuffer();

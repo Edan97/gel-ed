@@ -34,7 +34,9 @@ behind it.
    **Click a band to mark it**: the nearest band found in that lane gets a hollow red
    circle at its middle (halfway between its edges, measured at half its darkness),
    labelled with its name; if no band was found there, one is created where you clicked.
-   Click it again to unmark. The bands CSV lists marked and ladder bands with masses;
+   Drag a marked band to move it (it stays in its lane and snaps to the nearest band
+   found); right-click it to delete it. The bands CSV lists marked and ladder bands with
+   masses;
    **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
    shoulders marked. Profiles are read from the **edited image** by default; *original
@@ -56,6 +58,10 @@ behind it.
 
 Band finding settings: threshold (in multiples of each lane's noise), how much of the
 lane's centre is used, smoothing, and the noise window. Defaults match the Python version.
+
+4. **Figure**: the analysed gel with the ladder sizes marked down the side (the
+   leftmost ladder on the left, a second ladder on the right), to download as PNG or
+   copy to the clipboard.
 
 ## Repository layout
 
