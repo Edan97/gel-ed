@@ -192,7 +192,8 @@ h3.sub { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
 .unit-box { display: inline-flex; align-items: center; background: var(--page);
             border: 1px solid var(--border); border-radius: 6px; padding-right: 0.45rem; }
 .unit-box:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
-.ladder-notes .unit-box input { border: 0; background: transparent; width: 4.5rem; outline: none; text-align: right; }
+.unit-box input, .ladder-notes .unit-box input, table.annot .unit-box input {
+  border: 0; background: transparent; width: 4.5rem; outline: none; text-align: right; padding: 0.3rem 0.3rem; }
 .unit-box .unit { color: var(--text-secondary); }
 .lane-no { color: var(--text-secondary); white-space: nowrap; width: 4.5rem; flex: none; }
 .annot-wrap { overflow-x: auto; }
@@ -219,3 +220,4 @@ details.sub-details[hidden] { display: none; }
 table.band-table .band-name { font-weight: 600; white-space: nowrap; }
 table.band-table .band-mw { white-space: nowrap; font-variant-numeric: tabular-nums; padding-right: 1rem; }
 table.band-table .band-text { width: 22rem; }
+table.annot .lane-text { width: 16rem; }

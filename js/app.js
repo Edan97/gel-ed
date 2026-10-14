@@ -2,14 +2,15 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=7b02ef2b";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=7b02ef2b";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=7b02ef2b";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=7b02ef2b";
-import { median } from "./signal.js?v=7b02ef2b";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=7b02ef2b";
-import { LADDERS } from "./ladders.js?v=7b02ef2b";
-import { drawIcons } from "./icons.js?v=7b02ef2b";
+import { readImage } from "./image.js?v=7ee4169e";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=7ee4169e";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=7ee4169e";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=7ee4169e";
+import { median } from "./signal.js?v=7ee4169e";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=7ee4169e";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=7ee4169e";
+import { LADDERS } from "./ladders.js?v=7ee4169e";
+import { drawIcons } from "./icons.js?v=7ee4169e";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -34,6 +35,9 @@ const state = {
   picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
   pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
   laneIds: [],      // per lane: lane label (undefined = the lane number)
+  laneNotes: [],    // per lane: annotation (not on the figure)
+  laneVols: [],     // per lane: volume loaded (µL), as typed
+  aligns: {},       // running correction per "lane:refLane", cleared when bands are found again
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}
@@ -256,6 +260,7 @@ function laneProfiles() {
 function computeBands() {
   const opts = bandOptions();
   state.results = laneProfiles().map((p) => bandsFromProfile(p.mean, p.black, opts));
+  state.aligns = {};
   // each band's horizontal middle (where it's marked), measured on the edited image
   const { grey, w, h } = state.cropImg;
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) => { b.x = bandCentre(grey, w, h, s, e, b.y); }));
@@ -325,26 +330,51 @@ function assignLadders() {
       { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i, estimated: !!q.estimated }));
   });
   // marked bands: named lane.letter top to bottom, mass from the nearest ladder with a
-  // calibration (outside the ladder: ">top" / "<bottom")
+  // calibration, read at the band's row corrected for its lane running differently from
+  // the lane next to that ladder (outside the ladder: ">top" / "<bottom")
   const centre = ([s, e]) => (s + e) / 2;
+  const ladderLanes = new Set(state.ladders.map((l) => l.lane));
+  const nearest = (lane) => state.ladders.filter((l) => l.calib)
+    .sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane)) - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
+  const identity = { shift: 0, stretch: 1, corr: 1, centre: 0, sigma: 0, ok: true };
+  const alignFor = (j, near) => {
+    if (!near || ladderLanes.has(j + 1)) return identity;
+    const step = near.lane < lanes.length && !ladderLanes.has(near.lane + 1) ? 1 : -1;
+    const refLane = near.lane + step; // 1-based: the lane next to the ladder
+    if (refLane === j + 1 || refLane < 1 || refLane > lanes.length) return identity;
+    const key = `${j}:${refLane}`;
+    if (!state.aligns[key]) {
+      const me = state.results[j], ref = state.results[refLane - 1];
+      const a = align(matchSignal(me.profile, me.noise), matchSignal(ref.profile, ref.noise));
+      a.ok = a.corr >= 0.5;
+      a.sigma = alignmentSigma(me.bands, ref.bands, a);
+      a.refLane = refLane;
+      state.aligns[key] = a;
+    }
+    return state.aligns[key];
+  };
+  const laneAlign = lanes.map((lane, j) => alignFor(j, nearest(lane)));
+  // lanes whose leftover mismatch couldn't be measured (< 3 paired peaks) get the largest seen
+  const worst = Math.max(0, ...laneAlign.map((a) => a.sigma ?? 0));
   state.pickMarks = lanes.map((lane, j) => {
-    const near = state.ladders.filter((l) => l.calib)
-      .sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane)) - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
+    const near = nearest(lane), al = laneAlign[j];
     return [...(state.picks[j] || [])].sort((a, b) => a.y - b.y).map((q, n) => {
       const out = { ref: q, y: q.y, x: bandCentre(grey, w, h, lane[0], lane[1], q.y), name: `${j + 1}.${bandLetter(n)}`,
-                    created: q.created, kda: null, label: "" };
+                    created: q.created, kda: null, label: "", alignOk: al.ok };
       if (near) {
-        const c = near.calib;
-        if (q.y < c.y0) out.label = `>${c.kMax}`;
-        else if (q.y > c.y1) out.label = `<${c.kMin}`;
+        const c = near.calib, yr = toRef(q.y, al);
+        if (yr < c.y0) out.label = `>${c.kMax}`;
+        else if (yr > c.y1) out.label = `<${c.kMin}`;
         else {
-          out.kda = 10 ** c.f(q.y);
+          out.kda = 10 ** c.f(yr);
           out.label = fmtKda(out.kda);
-          // uncertainty (log10): band position through the curve's local slope, plus calibration
+          // uncertainty (log10): band position and leftover running mismatch (rows), through
+          // the curve's local slope, plus calibration (ladder leave-one-out)
           const found = state.results[j].bands.find((b) => Math.abs(b.y - q.y) <= 1);
           const sy = found && !q.created ? found.sigmaY : 3; // 3 rows for a band placed by hand
-          const slope = Math.abs(c.f(Math.min(q.y + 0.5, c.y1)) - c.f(Math.max(q.y - 0.5, c.y0)));
-          const sd = Math.hypot(slope * sy, c.loo ? c.loo(q.y) : 0);
+          const rows = Math.hypot(sy * al.stretch, al.sigma ?? worst);
+          const slope = Math.abs(c.f(Math.min(yr + 0.5, c.y1)) - c.f(Math.max(yr - 0.5, c.y0)));
+          const sd = Math.hypot(slope * rows, c.loo ? c.loo(yr) : 0);
           out.pm = out.kda * (10 ** sd - 1);
         }
       }
@@ -356,8 +386,8 @@ function assignLadders() {
   drawLadderCards();
 }
 
-// Clicking on a band marks it: the nearest band found in that lane (within 15 screen
-// px), or a new one exactly where clicked if none was found. (Right-click deletes.)
+// Clicking on a band marks it: the nearest band found in that lane that isn't marked
+// yet (within 8 screen px), or a new one exactly where clicked. (Right-click deletes.)
 function clickBand(p) {
   const top = overlayCanvas.height - state.cropImg.h;
   const y = Math.round(p.y - top);
@@ -365,10 +395,14 @@ function clickBand(p) {
   const lane = state.bounds.findIndex((b, i) => i < state.bounds.length - 1 && p.x >= b && p.x < state.bounds[i + 1]);
   if (lane < 0) return;
   const picks = (state.picks[lane] = state.picks[lane] || []);
-  const tol = 15 * p.px;
-  if (picks.some((q) => Math.abs(q.y - y) <= 8 * p.px)) return; // already marked
-  const { y: at, snapped } = snapRow(lane, y, tol);
-  if (!picks.some((q) => q.y === at)) picks.push({ y: at, created: !snapped });
+  // snap to the nearest band found that isn't marked yet (within 8 screen px); otherwise
+  // create one where clicked. Close neighbours (e.g. a triplet) can each be marked, and a
+  // band the finder missed next to a marked one gets created rather than ignored.
+  const free = state.results[lane].bands.map((b) => b.y).filter((by) => !picks.some((q) => q.y === by));
+  const near = free.sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
+  if (near !== undefined && Math.abs(near - y) <= 8 * p.px) picks.push({ y: near, created: false });
+  else if (!picks.some((q) => Math.abs(q.y - y) <= 2)) picks.push({ y, created: true });
+  else return;
   assignLadders();
   drawResults();
 }
@@ -462,7 +496,7 @@ overlayCanvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // right-click is handled by "contextmenu"
   const hit = markerAt(p);
   if (hit) {
-    markDrag = { ...hit, x: hit.mark.x, y: hit.mark.y };
+    markDrag = { ...hit, x: hit.mark.x, y: hit.mark.y, startX: p.x, startY: p.y };
     overlayCanvas.setPointerCapture(e.pointerId);
     drawResults();
     return;
@@ -513,7 +547,13 @@ overlayCanvas.addEventListener("pointerup", (e) => {
     const p = canvasPoint(overlayCanvas, e);
     const { kind, lane, mark } = markDrag;
     const dropped = Math.round(markDrag.y);
+    const top = overlayCanvas.height - state.cropImg.h;
+    const still = Math.hypot(p.x - markDrag.startX, p.y - markDrag.startY) <= 4 * p.px;
     markDrag = null;
+    // a press that didn't move, off the circle's centre: a click on a neighbouring band
+    // (close bands, e.g. a triplet, sit only a few screen pixels apart)
+    if (still && Math.abs(p.y - (top + mark.y)) > 3 * p.px) { clickBand(p); return; }
+    if (still) { drawResults(); return; }
     const { y, snapped } = snapRow(lane, dropped, 15 * p.px);
     if (kind === "pick") {
       const picks = state.picks[lane], me = mark.ref;
@@ -615,7 +655,7 @@ function drawAnnotations(force = false) {
   const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k));
   for (const g of state.groups) if (g.from && (g.from > n || g.to > n)) { g.from = g.to = null; }
   const head = document.createElement("tr");
-  head.innerHTML = "<th>Lane</th>";
+  head.innerHTML = "<th>Lane</th><th>Annotation</th><th>Volume</th>";
   state.groups.forEach((g, gi) => {
     const th = document.createElement("th");
     th.className = "group-head";
@@ -637,7 +677,14 @@ function drawAnnotations(force = false) {
   head.append(addTh);
   const rows = lanes.map((k) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><input type="text" class="lane-id"></td>`;
+    tr.innerHTML = `<td><input type="text" class="lane-id"></td>
+      <td><input type="text" class="lane-text" placeholder="Sample, treatment, …"></td>
+      <td><span class="unit-box"><input type="text" class="lane-vol" inputmode="decimal"><span class="unit">µL</span></span></td>`;
+    const note = tr.querySelector(".lane-text"), vol = tr.querySelector(".lane-vol");
+    note.value = state.laneNotes[k] ?? "";
+    vol.value = state.laneVols[k] ?? "";
+    note.addEventListener("input", () => { state.laneNotes[k] = note.value; });
+    vol.addEventListener("input", () => { state.laneVols[k] = vol.value; });
     const id = tr.querySelector(".lane-id");
     id.value = state.laneIds[k] ?? String(k);
     id.addEventListener("input", () => { state.laneIds[k] = id.value; drawFigure(); });
@@ -698,7 +745,8 @@ function drawBandNotes() {
     tr.innerHTML = `<td class="band-name"></td><td class="band-mw"></td><td><input type="text" class="band-text" placeholder="e.g. full-length, cleaved, …"></td>`;
     tr.querySelector(".band-name").textContent = q.name;
     tr.querySelector(".band-mw").textContent = q.kda === null ? (q.label || "—")
-      : `${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}`;
+      : `${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}${q.alignOk ? "" : " ?"}`;
+    if (!q.alignOk) tr.querySelector(".band-mw").title = "This lane matches the lane next to the ladder poorly: its running correction is uncertain.";
     const input = tr.querySelector(".band-text");
     input.value = q.ref.note ?? "";
     input.addEventListener("input", () => { q.ref.note = input.value; });

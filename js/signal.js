@@ -22,12 +22,15 @@ function gaussianKernel(sigma, order) {
     sum += k[x + radius];
   }
   for (let i = 0; i < k.length; i++) k[i] /= sum;
-  if (order === 2) {
+  if (order === 1) {
+    // d/dx of the Gaussian: phi(x) * (-x / sigma^2)
+    for (let x = -radius; x <= radius; x++) k[x + radius] *= -x / (sigma * sigma);
+  } else if (order === 2) {
     // d2/dx2 of the Gaussian: phi(x) * (x^2/sigma^4 - 1/sigma^2)
     const s2 = sigma * sigma;
     for (let x = -radius; x <= radius; x++) k[x + radius] *= x * x / (s2 * s2) - 1 / s2;
   } else if (order !== 0) {
-    throw new Error("gaussian1d: only order 0 and 2 are implemented");
+    throw new Error("gaussian1d: only orders 0, 1 and 2 are implemented");
   }
   return { k, radius };
 }
@@ -36,10 +39,10 @@ export function gaussian1d(a, sigma, order = 0) {
   const { k, radius } = gaussianKernel(sigma, order);
   const n = a.length;
   const out = new Float64Array(n);
-  // scipy correlates with the reversed kernel; both kernels used here are symmetric
+  // scipy correlates with the reversed kernel (matters for order 1, which is odd)
   for (let i = 0; i < n; i++) {
     let s = 0;
-    for (let j = -radius; j <= radius; j++) s += k[j + radius] * a[reflect(i + j, n)];
+    for (let j = -radius; j <= radius; j++) s += k[radius - j] * a[reflect(i + j, n)];
     out[i] = s;
   }
   return out;

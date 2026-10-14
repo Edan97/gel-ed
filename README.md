@@ -61,12 +61,15 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 
    **Ladder** (under the overlay): the selected ladder's name (editable) and its
    volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
-   with the lane number), and one column per **group** (e.g. non-reducing /
-   reducing): name it at the top, then click a lane's cell and drag to cover a
-   continuous run of lanes. **Band annotations** (collapsible, appears once a band is
-   marked): each marked band's estimated MW ± uncertainty (band position and ladder
-   calibration, as in the Python version; not yet including lanes running
-   differently) and an annotation, also in the bands CSV. Ladder sizes with no band found are placed by estimate
+   with the lane number, used on the figure), an annotation and a volume (µL), and one
+   column per **group** (e.g. non-reducing / reducing): name it at the top, then click
+   a lane's cell and drag to cover a continuous run of lanes. **Band annotations**
+   (collapsible, appears once a band is marked): each marked band's estimated MW ±
+   uncertainty and an annotation, also in the bands CSV. Masses are corrected for each
+   lane running differently from the lane next to its ladder (a shift and slight
+   stretch matched on the lane profiles, as in the Python version); the ± combines band
+   position, the leftover mismatch after that correction, and ladder calibration.
+   Lanes that match poorly are flagged "?". Ladder sizes with no band found are placed by estimate
    (pale) so they can be dragged onto the right band.
 4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
    (the leftmost ladder on the left, a second ladder on the right); sizes that would
@@ -84,6 +87,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/transform.js` | Rotation/skew/distort/perspective and the crop rule |
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
 | `js/calibrate.js` | Ladder band picking (solidity) and the mass calibration (PCHIP, scipy's formulas) |
+| `js/running.js` | Correction for lanes running differently (port of `scoping/band_masses.py`) |
 | `js/ladders.js` | The ladders the page knows (name and sizes); add new ones here |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |

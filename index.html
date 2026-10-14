@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=7b02ef2b">
-  <script type="module" src="js/app.js?v=7b02ef2b"></script>
+  <link rel="stylesheet" href="css/style.css?v=7ee4169e">
+  <script type="module" src="js/app.js?v=7ee4169e"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="7b02ef2b">version 22</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="7ee4169e">version 23</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -164,15 +164,18 @@
             <div id="ladder-notes" class="ladder-notes"></div>
             <details class="sub-details" open>
               <summary>Lane annotations</summary>
-              <p class="hint">Lane labels (used above the lanes on the figure). Groups (e.g. non-reducing / reducing):
+              <p class="hint">Lane labels are used above the lanes on the figure; annotations and volumes aren't.
+                Groups (e.g. non-reducing / reducing):
                 add a column, name it, then click a lane's cell and drag to cover a continuous run of lanes. Click a
                 lone selected cell to clear it.</p>
               <div class="annot-wrap"><table id="annot" class="annot"></table></div>
             </details>
             <details id="band-annot" class="sub-details" open hidden>
               <summary>Band annotations</summary>
-              <p class="hint">Each band you've marked, with its estimated molecular weight ± uncertainty (band position
-                and ladder calibration; not yet including lanes running differently, which can add several percent).</p>
+              <p class="hint">Each band you've marked, with its estimated molecular weight ± uncertainty. Masses are
+                corrected for each lane running differently from the lane next to the ladder (matched on where their
+                profiles rise and fall; assumed to have run like the ladder). The ± combines band position, the
+                leftover mismatch after that correction, and ladder calibration. "?" = the lane matches poorly.</p>
               <div class="annot-wrap"><table id="band-table" class="annot band-table"></table></div>
             </details>
           </div>
