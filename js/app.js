@@ -2,12 +2,12 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=cca3f4d6";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=cca3f4d6";
-import { bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=cca3f4d6";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=cca3f4d6";
-import { median } from "./signal.js?v=cca3f4d6";
-import { drawIcons } from "./icons.js?v=cca3f4d6";
+import { readImage } from "./image.js?v=974cc2d4";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=974cc2d4";
+import { bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=974cc2d4";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=974cc2d4";
+import { median } from "./signal.js?v=974cc2d4";
+import { drawIcons } from "./icons.js?v=974cc2d4";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -283,7 +283,7 @@ function drawResults(active = -1) {
   ctx.fillRect(0, 0, w, top);
   ctx.putImageData(greyToImageData(ctx, grey, w, h), 0, top);
   drawDividers(ctx, state.bounds, top, h, px, active);
-  drawOverlay(ctx, lanePairs(), state.results, top, px);
+  drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true");
   const counts = state.results.map((r) => r.bands.length);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
   $("summary").textContent = state.laneNote + `${counts.length} lanes, ${counts.reduce((a, b) => a + b, 0)} bands ` +
@@ -367,6 +367,13 @@ for (const id of TONE) $(id).addEventListener("input", () => { showValues(); sta
 for (const id of BANDS) $(id).addEventListener("input", () => { showValues(); state.src && analyse(); });
 $("source").addEventListener("change", () => state.src && analyse());
 $("redo").addEventListener("click", () => state.src && analyse());
+$("show-profiles").addEventListener("click", () => { // for debugging: profiles and band kinds
+  const on = $("show-profiles").getAttribute("aria-pressed") !== "true";
+  $("show-profiles").setAttribute("aria-pressed", String(on));
+  $("key-profiles").hidden = !on;
+  $("key-bands").hidden = on;
+  if (state.cropImg && state.results) drawResults();
+});
 for (const id of [...GEOMETRY, ...TONE]) {
   $(id).addEventListener("dblclick", () => { $(id).value = 0; $(id).dispatchEvent(new Event("input")); });
 }

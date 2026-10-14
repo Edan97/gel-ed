@@ -28,10 +28,11 @@ behind it.
    that many. Lanes are placed at the clearest gaps with widths kept regular; drag the
    dashed dividers to adjust.
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
-   Profiles are read from the **original pixels** by default: each pixel of the loaded
-   image is placed through the edits and counted once, never blended, so straightening
-   doesn't smooth the data. Switch to *edited image* to compare with reading the
-   resampled picture. The edit settings are written into every row of the bands CSV.
+   Each band found is marked with a hollow red circle; **Show profiles** (off by default,
+   for debugging) draws each lane's profile instead, with peaks, saturated peaks and
+   shoulders marked. Profiles are read from the **edited image** by default; *original
+   pixels* places each pixel of the loaded image through the edits and counts it once,
+   never blended. The edit settings are written into every row of the bands CSV.
    Each lane's profile (mean darkness down its central columns) is drawn on the gel with
    the bands found in it: peaks (red), saturated peaks (black) and shoulders (orange:
    bands merged into a neighbour). Download the overlay, the edited image or a CSV of

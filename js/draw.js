@@ -19,10 +19,23 @@ export function greyToImageData(ctx, grey, w, h) {
 
 // Overlay on a canvas already holding the gel, drawn `top` pixels below the canvas top.
 // px = size of one screen pixel in canvas pixels, so lines stay visible when scaled down.
-export function drawOverlay(ctx, lanes, results, top, px) {
+// showProfiles: draw each lane's profile with peaks, saturated peaks and shoulders marked;
+// otherwise just a hollow red circle on every band found, at the centre of its lane.
+export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false) {
   ctx.save();
   ctx.lineJoin = "round";
   lanes.forEach(([start, end], li) => {
+    drawLaneNumber(ctx, li, start, end, top, px);
+    if (!showProfiles) {
+      ctx.strokeStyle = COLOURS.peak;
+      ctx.lineWidth = 1.8 * px;
+      for (const b of results[li].bands) {
+        ctx.beginPath();
+        ctx.arc((start + end) / 2, top + b.y, 6 * px, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+      return;
+    }
     const { bands, profile, noise } = results[li];
     let min = Infinity, max = -Infinity;
     for (const v of profile) if (!Number.isNaN(v)) { min = Math.min(min, v); max = Math.max(max, v); }
@@ -61,14 +74,16 @@ export function drawOverlay(ctx, lanes, results, top, px) {
         ctx.fill();
       }
     }
-
-    ctx.fillStyle = COLOURS.lane;
-    ctx.font = `bold ${Math.round(14 * px)}px system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(String(li + 1), (start + end) / 2, top - 4 * px);
   });
   ctx.restore();
+}
+
+function drawLaneNumber(ctx, li, start, end, top, px) {
+  ctx.fillStyle = COLOURS.lane;
+  ctx.font = `bold ${Math.round(14 * px)}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(String(li + 1), (start + end) / 2, top - 4 * px);
 }
 
 export function drawDividers(ctx, bounds, top, height, px, active = -1) {
