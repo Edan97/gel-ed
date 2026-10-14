@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=abc501f1";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=abc501f1";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=abc501f1";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter } from "./draw.js?v=abc501f1";
-import { median } from "./signal.js?v=abc501f1";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=abc501f1";
-import { LADDERS } from "./ladders.js?v=abc501f1";
-import { drawIcons } from "./icons.js?v=abc501f1";
+import { readImage } from "./image.js?v=ba947655";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=ba947655";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=ba947655";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter } from "./draw.js?v=ba947655";
+import { median } from "./signal.js?v=ba947655";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=ba947655";
+import { LADDERS } from "./ladders.js?v=ba947655";
+import { drawIcons } from "./icons.js?v=ba947655";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];

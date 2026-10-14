@@ -32,7 +32,8 @@ behind it.
    dashed dividers to adjust.
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
    Each band found is marked with a hollow red circle at the band's middle (halfway
-   between its edges, measured at half its darkness), labelled with its estimated mass;
+   between its edges, measured at half its darkness), labelled with its name (masses
+   are in the bands CSV);
    **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
    shoulders marked. Profiles are read from the **edited image** by default; *original

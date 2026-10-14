@@ -30,7 +30,7 @@ export function greyToImageData(ctx, grey, w, h) {
 // showProfiles: draw each lane's profile with peaks, saturated peaks and shoulders marked.
 // Otherwise circles at each band's middle (b.x): ladder bands filled and labelled with
 // their size (marks: per lane [{x, y, kda, ladder, i}]), other bands hollow and labelled
-// with their estimated mass (b.label). drag: a ladder marker being moved {mark, x, y}.
+// with their name (lane.letter, e.g. 2.C; masses are in the CSV). drag: a ladder marker being moved {mark, x, y}.
 export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, marks = null, drag = null) {
   ctx.save();
   ctx.lineJoin = "round";
@@ -39,14 +39,14 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
     if (!showProfiles) {
       ctx.strokeStyle = COLOURS.peak;
       ctx.lineWidth = 1.8 * px;
-      for (const b of results[li].bands) {
-        if (b.ladderBand) continue;
+      results[li].bands.forEach((b, n) => {
+        if (b.ladderBand) return;
         const x = b.x ?? (start + end) / 2;
         ctx.beginPath();
         ctx.arc(x, top + b.y, 6 * px, 0, 2 * Math.PI);
         ctx.stroke();
-        if (b.label) label(ctx, b.label, x + 9 * px, top + b.y, px, "#222222");
-      }
+        label(ctx, `${li + 1}.${bandLetter(n)}`, x + 9 * px, top + b.y, px, "#222222"); // its name
+      });
       for (const q of (marks && marks[li]) || []) {
         const moving = drag && drag.mark === q;
         const x = moving ? drag.x : q.x, y = top + (moving ? drag.y : q.y);
