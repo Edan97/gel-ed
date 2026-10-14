@@ -1,0 +1,83 @@
+// Drawing: greyscale arrays to canvas pixels, and the profiles-on-gel overlay
+// (port of plot_profiles_on_gel in scoping/band_peaks.py: lines and markers only).
+
+export const COLOURS = { profile: "#2a78d6", peak: "#d62a2a", saturated: "#000000", shoulder: "#e8730c",
+                         lane: "#1f4e8c", empty: [190, 190, 190] };
+
+export function greyToImageData(ctx, grey, w, h) {
+  const img = ctx.createImageData(w, h);
+  const d = img.data;
+  for (let i = 0; i < w * h; i++) {
+    const v = grey[i];
+    if (Number.isNaN(v)) {
+      d[i * 4] = COLOURS.empty[0]; d[i * 4 + 1] = COLOURS.empty[1]; d[i * 4 + 2] = COLOURS.empty[2];
+    } else {
+      const b = Math.round(Math.min(Math.max(v, 0), 1) * 255);
+      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = b;
+    }
+    d[i * 4 + 3] = 255;
+  }
+  return img;
+}
+
+// Overlay on a canvas already holding the gel, drawn `top` pixels below the canvas top.
+// px = size of one screen pixel in canvas pixels, so lines stay visible when scaled down.
+export function drawOverlay(ctx, lanes, results, top, px) {
+  ctx.save();
+  ctx.lineJoin = "round";
+  lanes.forEach(([start, end], li) => {
+    const { bands, profile, noise } = results[li];
+    let min = Infinity, max = -Infinity;
+    for (const v of profile) { min = Math.min(min, v); max = Math.max(max, v); }
+    const lw = 10 * noise || 1e-6;
+    const scale = (v) => Math.asinh(Math.max(v - min, 0) / lw);
+    const topScale = scale(max) || 1;
+    const x = (v) => start + (0.9 * (end - start) * scale(v)) / topScale;
+
+    ctx.strokeStyle = COLOURS.profile;
+    ctx.lineWidth = 1.3 * px;
+    ctx.beginPath();
+    profile.forEach((v, y) => (y ? ctx.lineTo(x(v), top + y) : ctx.moveTo(x(v), top + y)));
+    ctx.stroke();
+
+    for (const b of bands) {
+      const bx = x(profile[b.y]), by = top + b.y;
+      if (b.kind === "peak") {
+        ctx.strokeStyle = b.saturated ? COLOURS.saturated : COLOURS.peak;
+        ctx.lineWidth = 1.6 * px;
+        ctx.beginPath();
+        ctx.arc(bx, by, 4.5 * px, 0, 2 * Math.PI);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = COLOURS.shoulder;
+        ctx.beginPath();
+        ctx.moveTo(bx - 4 * px, by - 4.5 * px);
+        ctx.lineTo(bx + 5 * px, by);
+        ctx.lineTo(bx - 4 * px, by + 4.5 * px);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = COLOURS.lane;
+    ctx.font = `bold ${Math.round(14 * px)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(String(li + 1), (start + end) / 2, top - 4 * px);
+  });
+  ctx.restore();
+}
+
+export function drawDividers(ctx, bounds, top, height, px, active = -1) {
+  ctx.save();
+  bounds.forEach((b, i) => {
+    ctx.strokeStyle = i === active ? COLOURS.peak : "rgba(31, 78, 140, 0.55)";
+    ctx.lineWidth = (i === active ? 2 : 1) * px;
+    ctx.setLineDash([5 * px, 4 * px]);
+    ctx.beginPath();
+    ctx.moveTo(b, top);
+    ctx.lineTo(b, top + height);
+    ctx.stroke();
+  });
+  ctx.restore();
+}

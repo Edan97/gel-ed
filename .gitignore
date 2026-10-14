@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+
+# Gel data stays local: sample images, lane files (they carry sample names) and
+# everything generated from them.
+scoping/samples/*
+!scoping/samples/README.md
+scoping/out/

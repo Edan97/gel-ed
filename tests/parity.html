@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gel-ed · JS vs Python band finding</title>
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; }
+    td, th { padding: 0.2rem 0.6rem; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
+    .ok { color: #1a7f37; font-weight: 600; } .fail { color: #d03b3b; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Band finding: browser vs Python</h1>
+  <p>Runs <code>js/bands.js</code> on the lane pixels written by <code>scoping/js_reference.py</code> and compares
+    with Python's bands. Serve the repository root (<code>python3 -m http.server</code>) after running
+    <code>scoping/run_all.py</code>, then open <code>/tests/parity.html</code>.
+    Pass = same number of bands, same kinds and saturation flags, rows within ±1.</p>
+  <p id="result">Running…</p>
+  <table id="table"></table>
+  <script type="module">
+    import { findBands } from "../js/bands.js";
+
+    const ref = await fetch("../scoping/out/gel_02_js_reference.json").then((r) => {
+      if (!r.ok) throw new Error(`reference not found (${r.status}): run scoping/run_all.py first`);
+      return r.json();
+    }).catch((e) => { document.getElementById("result").textContent = e.message; throw e; });
+
+    const table = document.getElementById("table");
+    table.innerHTML = "<tr><th>Lane</th><th>Python</th><th>JS</th><th></th></tr>";
+    let failed = 0;
+    const fmt = (b) => b.map((d) => `${d.y}${d.kind === "shoulder" ? "s" : ""}${d.saturated ? "*" : ""}`).join(" ");
+    for (const lane of ref.lanes) {
+      const grey = Float64Array.from(lane.levels, (v) => v / 255);
+      const { bands } = findBands(grey, lane.w, lane.h, 0, lane.w);
+      const ok = bands.length === lane.bands.length && bands.every((b, i) =>
+        Math.abs(b.y - lane.bands[i].y) <= 1 && b.kind === lane.bands[i].kind && b.saturated === lane.bands[i].saturated);
+      if (!ok) failed++;
+      table.insertAdjacentHTML("beforeend", `<tr><td>${lane.name}</td><td>${fmt(lane.bands)}</td>` +
+        `<td>${fmt(bands)}</td><td class="${ok ? "ok" : "fail"}">${ok ? "ok" : "FAIL"}</td></tr>`);
+    }
+    const res = document.getElementById("result");
+    res.className = failed ? "fail" : "ok";
+    res.textContent = failed ? `${failed} of ${ref.lanes.length} lanes differ` : `All ${ref.lanes.length} lanes match`;
+    document.title = (failed ? "FAIL" : "PASS") + " · " + document.title;
+  </script>
+</body>
+</html>
