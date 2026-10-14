@@ -4,8 +4,9 @@
 export const COLOURS = { profile: "#2a78d6", peak: "#d62a2a", saturated: "#000000", shoulder: "#e8730c",
                          lane: "#1f4e8c" };
 
-// Lane names: A, B, ... Z, AA, AB, ... (bands are named lane.n, n counted from the top).
-export function laneName(i) {
+// Letters for bands within a lane, counted from the top: A, B, ... Z, AA, AB, ...
+// A band's name is its lane number and letter: 1.A, 1.B, ... 2.A, ...
+export function bandLetter(i) {
   let name = "";
   for (let k = i + 1; k > 0; k = Math.floor((k - 1) / 26)) name = String.fromCharCode(65 + ((k - 1) % 26)) + name;
   return name;
@@ -120,7 +121,7 @@ function drawLaneNumber(ctx, li, start, end, top, px) {
   ctx.font = `bold ${Math.round(14 * px)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
-  ctx.fillText(laneName(li), (start + end) / 2, top - 4 * px);
+  ctx.fillText(String(li + 1), (start + end) / 2, top - 4 * px);
 }
 
 export function drawDividers(ctx, bounds, top, height, px, active = -1) {
