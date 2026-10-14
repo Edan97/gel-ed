@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=d9d82bb5">
-  <script type="module" src="js/app.js?v=d9d82bb5"></script>
+  <link rel="stylesheet" href="css/style.css?v=27dea12d">
+  <script type="module" src="js/app.js?v=27dea12d"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="d9d82bb5">version 8</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="27dea12d">version 9</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -105,6 +105,8 @@
             <fieldset>
               <legend>Ladders</legend>
               <div id="ladder-cards" class="ladder-cards"></div>
+              <p class="hint">Ladder bands are the filled circles, labelled with their size. If one is on the wrong
+                band, drag it to the right one; masses update as you go.</p>
               <button type="button" id="add-ladder" class="btn">Add ladder</button>
             </fieldset>
             <template id="ladder-card">
@@ -115,6 +117,8 @@
                 </div>
                 <select class="ladder-type"></select>
                 <p class="hint ladder-sizes"></p>
+                <label class="row">Lane <select class="ladder-lane"></select></label>
+                <p class="hint ladder-note"></p>
               </div>
             </template>
             <fieldset>
@@ -144,7 +148,8 @@
               </div>
             </fieldset>
             <button type="button" id="show-profiles" class="btn" aria-pressed="false">Show profiles</button>
-            <p class="legend-key" id="key-bands"><span class="key peak"></span> band found</p>
+            <p class="legend-key" id="key-bands"><span class="key ladder"></span> ladder band (size)
+              <span class="key peak"></span> band (estimated kDa)</p>
             <p class="legend-key" id="key-profiles" hidden>
               <span class="key profile"></span> profile (darker → right)
               <span class="key peak"></span> peak

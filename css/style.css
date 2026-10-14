@@ -152,6 +152,8 @@ input[type="number"] {
 .ladder-card { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem; background: var(--page); }
 .ladder-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.35rem; }
 .ladder-type { width: 100%; }
+.ladder-note:empty { display: none; }
+.ladder-card .ladder-note { color: var(--error); }
 
 .view { min-width: 0; }
 canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touch-action: none; }
@@ -172,6 +174,7 @@ canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touc
 .key.profile { width: 18px; height: 2px; background: #2a78d6; }
 .key.peak, .key.sat { width: 10px; height: 10px; border: 2px solid #d62a2a; border-radius: 50%; }
 .key.sat { border-color: #000; }
+.key.ladder { width: 10px; height: 10px; border-radius: 50%; background: #d62a2a; }
 @media (prefers-color-scheme: dark) { .key.sat { border-color: #fff; } }
 .key.shoulder { width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
                 border-left: 9px solid #e8730c; }

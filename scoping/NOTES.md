@@ -140,6 +140,9 @@ Open questions and decisions from exploring the sample gels. Not a plan.
 - **Web: lane count** estimated from gaps (local-range rescaled column profile, median
   gap spacing). Correct (13) on gel_02 when straight; drifts when tilted > ~0.5°
   (gaps blur). First sample gives 11 (true count not recorded).
+- **Web: ladder picking** by solidity (fake at 789: 0.78 vs 0.94–1.00), count from the
+  ladder dictionary; user confirms by dragging filled markers. Masses from the nearest
+  ladder, no running correction yet.
 
 ## Sample quirks
 

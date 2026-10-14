@@ -222,7 +222,16 @@ editing and the band-finding overlay:
   with the same lanes as the original. Original pixels: 111 of 115 bands recovered,
   2 extra. Edited image: 110 recovered, 10 extra. Both within 0.5 rows. The few missing
   bands come from the test copy itself, which was resampled once to make it.
-- Masses, centre-lines and uncertainties are not in the web page yet.
+- **Ladder bands and masses**: each ladder card has a type and a lane. The ladder's
+  bands are the most solid candidates (share of the band's span that is actually dark),
+  as many as the ladder has sizes, ties broken by strength. On gel_02 this drops the
+  smudge at row ~789 (solidity 0.78; real bands 0.94–1.00) and leaves the 9 picked by
+  eye. Strength, thickness and left/right agreement alone don't separate it (faint real
+  bands at the bottom score as low). Confirmation is by hand: ladder bands are filled
+  circles labelled with their size, dragged from a wrong band to the right one. Masses
+  are read point-to-point from the nearest ladder (JS PCHIP matches scipy to 1e-6).
+- Not in the web page yet: correction for lanes running differently, centre-lines,
+  uncertainties.
 
 ## Known limitations
 

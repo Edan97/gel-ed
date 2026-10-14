@@ -29,13 +29,21 @@ behind it.
    dashed dividers to adjust.
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
    Each band found is marked with a hollow red circle at the band's middle (halfway
-   between its edges, measured at half its darkness); **Show profiles** (off by default,
+   between its edges, measured at half its darkness), labelled with its estimated mass;
+   **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
    shoulders marked. Profiles are read from the **edited image** by default; *original
    pixels* places each pixel of the loaded image through the edits and counts it once,
    never blended. The edit settings are written into every row of the bands CSV.
-   **Ladders**: one card per ladder on the gel (add or remove cards); each card's
-   dropdown says which ladder it is. Not yet used by the analysis.
+   **Ladders**: one card per ladder on the gel (add or remove cards); each card says
+   which ladder it is and which lane it's in. The ladder's bands are picked
+   automatically: as many as the ladder has sizes, keeping the most solid bands (a
+   smudge or a band with a bright spot is less solid). They're shown as filled circles
+   labelled with their size. **To correct one, drag it from the wrong band to the right
+   one**: it snaps to the nearest band found (or stays where dropped), dropping it on
+   another size swaps the two, and all masses update. Masses come from the nearest
+   ladder, point-to-point in log(kDa) as in the Python version; outside the ladder they
+   read ">220" / "<20". There's no correction yet for lanes running differently.
    Each lane's profile (mean darkness down its central columns) is drawn on the gel with
    the bands found in it: peaks (red), saturated peaks (black) and shoulders (orange:
    bands merged into a neighbour). Download the overlay, the edited image or a CSV of
@@ -53,6 +61,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/signal.js` | Gaussian smoothing, peak finding etc. with scipy's definitions |
 | `js/transform.js` | Rotation/skew/distort/perspective and the crop rule |
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
+| `js/calibrate.js` | Ladder band picking (solidity) and the mass calibration (PCHIP, scipy's formulas) |
 | `js/ladders.js` | The ladders the page knows (name and sizes); add new ones here |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |

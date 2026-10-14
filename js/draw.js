@@ -19,9 +19,11 @@ export function greyToImageData(ctx, grey, w, h) {
 
 // Overlay on a canvas already holding the gel, drawn `top` pixels below the canvas top.
 // px = size of one screen pixel in canvas pixels, so lines stay visible when scaled down.
-// showProfiles: draw each lane's profile with peaks, saturated peaks and shoulders marked;
-// otherwise just a hollow red circle on every band found, at the band's middle (b.x).
-export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false) {
+// showProfiles: draw each lane's profile with peaks, saturated peaks and shoulders marked.
+// Otherwise circles at each band's middle (b.x): ladder bands filled and labelled with
+// their size (marks: per lane [{x, y, kda, ladder, i}]), other bands hollow and labelled
+// with their estimated mass (b.label). drag: a ladder marker being moved {mark, x, y}.
+export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, marks = null, drag = null) {
   ctx.save();
   ctx.lineJoin = "round";
   lanes.forEach(([start, end], li) => {
@@ -30,9 +32,23 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false) 
       ctx.strokeStyle = COLOURS.peak;
       ctx.lineWidth = 1.8 * px;
       for (const b of results[li].bands) {
+        if (b.ladderBand) continue;
+        const x = b.x ?? (start + end) / 2;
         ctx.beginPath();
-        ctx.arc(b.x ?? (start + end) / 2, top + b.y, 6 * px, 0, 2 * Math.PI); // at the band's middle
+        ctx.arc(x, top + b.y, 6 * px, 0, 2 * Math.PI);
         ctx.stroke();
+        if (b.label) label(ctx, b.label, x + 9 * px, top + b.y, px, "#222222");
+      }
+      for (const q of (marks && marks[li]) || []) {
+        const moving = drag && drag.mark === q;
+        const x = moving ? drag.x : q.x, y = top + (moving ? drag.y : q.y);
+        ctx.fillStyle = COLOURS.peak;
+        ctx.globalAlpha = moving ? 0.6 : 1;
+        ctx.beginPath();
+        ctx.arc(x, y, 6.5 * px, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        label(ctx, String(q.kda), x + 9.5 * px, y, px, COLOURS.peak);
       }
       return;
     }
@@ -75,6 +91,20 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false) 
       }
     }
   });
+  ctx.restore();
+}
+
+// Small bold label with a white halo, readable on light and dark parts of the gel.
+function label(ctx, text, x, y, px, colour) {
+  ctx.save();
+  ctx.font = `bold ${Math.round(11 * px)}px system-ui, sans-serif`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 3 * px;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = colour;
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 

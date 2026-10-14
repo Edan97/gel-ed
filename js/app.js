@@ -2,13 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=d9d82bb5";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=d9d82bb5";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=d9d82bb5";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=d9d82bb5";
-import { median } from "./signal.js?v=d9d82bb5";
-import { LADDERS } from "./ladders.js?v=d9d82bb5";
-import { drawIcons } from "./icons.js?v=d9d82bb5";
+import { readImage } from "./image.js?v=27dea12d";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=27dea12d";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=27dea12d";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=27dea12d";
+import { median } from "./signal.js?v=27dea12d";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=27dea12d";
+import { LADDERS } from "./ladders.js?v=27dea12d";
+import { drawIcons } from "./icons.js?v=27dea12d";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -28,7 +29,8 @@ const state = {
   bounds: null,     // lane boundaries in crop columns
   countLanes: true, // next analysis estimates the number of lanes (on load and "Find lanes")
   laneNote: "",
-  ladders: [],      // one {type} per ladder card; type is a key of LADDERS
+  ladders: [],      // one per ladder card: {type (key of LADDERS), lane (1-based), markers, manual, note}
+  marks: null,      // per lane: ladder markers to draw [{y, x, kda, ladder, i}]
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -92,6 +94,7 @@ function applyGeometry() {
     state.crop = full; // the whole image: blank corners just contribute nothing
   }
   if (state.box && (state.box.W !== box.W || state.box.H !== box.H)) state.bounds = null;
+  resetLadders();
   state.box = box;
   state.m = m;
   state.warped = warp(grey, w, h, m, box);
@@ -195,6 +198,7 @@ editCanvas.addEventListener("pointerup", () => {
   drag = null;
   state.cropUser = true;
   state.bounds = null; // area changed: place lanes again
+  resetLadders();
   analyse();
 });
 
@@ -251,6 +255,70 @@ function computeBands() {
   // each band's horizontal middle (where it's marked), measured on the edited image
   const { grey, w, h } = state.cropImg;
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) => { b.x = bandCentre(grey, w, h, s, e, b.y); }));
+  assignLadders();
+}
+
+// ---------- ladders: picking, calibration, masses ----------
+
+function resetLadders() {
+  for (const l of state.ladders) { l.manual = false; l.markers = null; }
+}
+
+const fmtKda = (k) => (k >= 10 ? k.toFixed(0) : k.toFixed(1));
+
+// Ladder markers (picked automatically unless moved by hand), each ladder's calibration
+// (log10 kDa against row, point-to-point PCHIP as in Python), and every other band's mass
+// from the nearest ladder. No correction for lanes running differently yet.
+function assignLadders() {
+  const { grey, w, h } = state.cropImg;
+  const lanes = lanePairs();
+  for (const lad of state.ladders) {
+    lad.lane = Math.min(Math.max(1, lad.lane), lanes.length);
+    const sizes = LADDERS[lad.type].kda;
+    const [s, e] = lanes[lad.lane - 1];
+    if (!lad.manual || !lad.markers) {
+      const bands = state.results[lad.lane - 1].bands;
+      const bg = laneBackground(grey, w, h, s, e);
+      const chosen = pickLadderBands(bands, bands.map((b) => bandSolidity(grey, w, h, s, e, b.y, bg)), sizes.length);
+      lad.markers = chosen.map((b, i) => ({ y: b.y, kda: sizes[i] }));
+    }
+    const m = [...lad.markers].sort((a, b) => a.y - b.y);
+    lad.note = "";
+    lad.calib = null;
+    if (m.length < sizes.length) lad.note = `Only ${m.length} of ${sizes.length} ladder bands found; the smallest sizes aren't placed.`;
+    if (m.some((q, i) => i && (q.kda >= m[i - 1].kda || q.y <= m[i - 1].y))) {
+      lad.note = "Ladder bands are out of order: drag them back so sizes fall from top to bottom.";
+    } else if (m.length >= 2) {
+      lad.calib = { f: pchip(m.map((q) => q.y), m.map((q) => Math.log10(q.kda))),
+                    y0: m[0].y, y1: m[m.length - 1].y, kMax: m[0].kda, kMin: m[m.length - 1].kda };
+    }
+  }
+  // markers to draw, per lane
+  state.marks = lanes.map(() => []);
+  state.ladders.forEach((lad, li) => {
+    const [s, e] = lanes[lad.lane - 1];
+    lad.markers.forEach((q, i) => state.marks[lad.lane - 1].push(
+      { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i }));
+  });
+  // masses: each band read against the nearest ladder that has a calibration
+  const centre = ([s, e]) => (s + e) / 2;
+  lanes.forEach((lane, j) => {
+    const marks = state.marks[j];
+    const usable = state.ladders.filter((l) => l.calib);
+    const near = usable.sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane))
+                                      - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
+    for (const b of state.results[j].bands) {
+      b.ladderBand = marks.some((q) => Math.abs(q.y - b.y) <= 1);
+      b.kda = null;
+      b.label = "";
+      if (b.ladderBand || state.ladders.some((l) => l.lane === j + 1) || !near) continue;
+      const c = near.calib;
+      if (b.y < c.y0) b.label = `>${c.kMax}`;
+      else if (b.y > c.y1) b.label = `<${c.kMin}`;
+      else { b.kda = 10 ** c.f(b.y); b.label = fmtKda(b.kda); }
+    }
+  });
+  drawLadderCards();
 }
 
 let pending = false;
@@ -288,16 +356,37 @@ function drawResults(active = -1) {
   ctx.fillRect(0, 0, w, top);
   ctx.putImageData(greyToImageData(ctx, grey, w, h), 0, top);
   drawDividers(ctx, state.bounds, top, h, px, active);
-  drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true");
+  drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true",
+              state.marks, markDrag);
   const counts = state.results.map((r) => r.bands.length);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
   $("summary").textContent = state.laneNote + `${counts.length} lanes, ${counts.reduce((a, b) => a + b, 0)} bands ` +
     `(per lane: ${counts.join(", ")}), read from the ${from}. Rows and columns are in the analysed area.`;
 }
 
+// A ladder marker under the pointer: {lane, mark}. Only in the circles view.
+let markDrag = null;
+function markerAt(p) {
+  if (!state.marks || $("show-profiles").getAttribute("aria-pressed") === "true") return null;
+  const top = overlayCanvas.height - state.cropImg.h;
+  let best = null, dist = 10 * p.px;
+  state.marks.forEach((marks, lane) => marks.forEach((q) => {
+    const d = Math.hypot(q.x - p.x, top + q.y - p.y);
+    if (d <= dist) { best = { lane, mark: q }; dist = d; }
+  }));
+  return best;
+}
+
 overlayCanvas.addEventListener("pointerdown", (e) => {
   if (!state.bounds) return;
   const p = canvasPoint(overlayCanvas, e);
+  const hit = markerAt(p);
+  if (hit) {
+    markDrag = { ...hit, x: hit.mark.x, y: hit.mark.y };
+    overlayCanvas.setPointerCapture(e.pointerId);
+    drawResults();
+    return;
+  }
   let best = -1, dist = 8 * p.px;
   state.bounds.forEach((b, i) => { if (Math.abs(b - p.x) <= dist) { best = i; dist = Math.abs(b - p.x); } });
   if (best < 0) return;
@@ -307,9 +396,15 @@ overlayCanvas.addEventListener("pointerdown", (e) => {
 
 overlayCanvas.addEventListener("pointermove", (e) => {
   const p = canvasPoint(overlayCanvas, e);
+  if (markDrag) {
+    markDrag.x = p.x;
+    markDrag.y = p.y - (overlayCanvas.height - state.cropImg.h);
+    drawResults();
+    return;
+  }
   if (laneDrag === null) {
     const near = state.bounds && state.bounds.some((b) => Math.abs(b - p.x) <= 8 * p.px);
-    overlayCanvas.style.cursor = near ? "ew-resize" : "default";
+    overlayCanvas.style.cursor = state.cropImg && markerAt(p) ? "grab" : near ? "ew-resize" : "default";
     return;
   }
   const b = state.bounds, i = laneDrag, gap = 4;
@@ -319,7 +414,28 @@ overlayCanvas.addEventListener("pointermove", (e) => {
   drawResults(i);
 });
 
-overlayCanvas.addEventListener("pointerup", () => {
+// Dropping a ladder marker: it snaps to the nearest band found in its lane (within 15
+// screen px), otherwise stays where it was dropped. Dropped on another of the ladder's
+// markers, the two swap. Moved markers stay until the geometry, area, lanes or ladder change.
+overlayCanvas.addEventListener("pointerup", (e) => {
+  if (markDrag) {
+    const p = canvasPoint(overlayCanvas, e);
+    const { lane, mark } = markDrag;
+    markDrag = null;
+    const lad = state.ladders[mark.ladder];
+    let y = Math.round(p.y - (overlayCanvas.height - state.cropImg.h));
+    y = Math.min(Math.max(y, 0), state.cropImg.h - 1);
+    const snap = state.results[lane].bands.map((b) => b.y).sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
+    if (snap !== undefined && Math.abs(snap - y) <= 15 * p.px) y = snap;
+    const me = lad.markers[mark.i];
+    const other = lad.markers.find((q) => q !== me && Math.abs(q.y - y) <= 2);
+    if (other) other.y = me.y;
+    me.y = y;
+    lad.manual = true;
+    assignLadders();
+    drawResults();
+    return;
+  }
   if (laneDrag === null) return;
   laneDrag = null;
   drawResults();
@@ -337,22 +453,29 @@ function drawLadderCards() {
     const select = card.querySelector(".ladder-type");
     for (const [key, { name }] of Object.entries(LADDERS)) select.add(new Option(name, key));
     select.value = ladder.type;
-    const sizes = () => { card.querySelector(".ladder-sizes").textContent = `${LADDERS[ladder.type].kda.join(", ")} kDa`; };
-    sizes();
-    select.addEventListener("change", () => { ladder.type = select.value; sizes(); });
+    card.querySelector(".ladder-sizes").textContent = `${LADDERS[ladder.type].kda.join(", ")} kDa`;
+    const laneSelect = card.querySelector(".ladder-lane");
+    const nLanes = state.bounds ? state.bounds.length - 1 : 1;
+    for (let k = 1; k <= nLanes; k++) laneSelect.add(new Option(String(k), String(k)));
+    laneSelect.value = String(Math.min(ladder.lane, nLanes));
+    card.querySelector(".ladder-note").textContent = ladder.note || "";
+    const changed = () => { ladder.manual = false; ladder.markers = null; if (state.results) { assignLadders(); drawResults(); } };
+    select.addEventListener("change", () => { ladder.type = select.value; changed(); drawLadderCards(); });
+    laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); changed(); });
     card.querySelector(".ladder-remove").addEventListener("click", () => {
       state.ladders.splice(i, 1);
-      drawLadderCards();
+      if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
     });
     list.append(card);
   });
 }
 
+const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], lane, markers: null, manual: false, note: "" });
 $("add-ladder").addEventListener("click", () => {
-  state.ladders.push({ type: Object.keys(LADDERS)[0] });
-  drawLadderCards();
+  state.ladders.push(newLadder(state.bounds ? state.bounds.length - 1 : 1)); // a second ladder: often the last lane
+  if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
 });
-state.ladders.push({ type: Object.keys(LADDERS)[0] }); // most gels have one ladder
+state.ladders.push(newLadder(1)); // most gels have one ladder, in the first lane
 drawLadderCards();
 
 // ---------- downloads ----------
@@ -380,11 +503,17 @@ $("dl-image").addEventListener("click", () => {
 $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
   const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
-  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "col", "kind", "saturated", "snr", "read_from",
+  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "col", "kind", "saturated", "snr", "kDa", "ladder_size_kDa", "read_from",
                  ...GEOMETRY, ...TONE, "invert"]];
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) =>
-    rows.push([i + 1, s, e - 1, b.y, b.x.toFixed(1), b.kind, b.saturated, b.snr.toFixed(1), $("source").value,
+    rows.push([i + 1, s, e - 1, b.y, b.x.toFixed(1), b.kind, b.saturated, b.snr.toFixed(1),
+               b.kda !== null ? b.kda.toFixed(1) : b.label,
+               (state.marks[i].find((q) => Math.abs(q.y - b.y) <= 1) || {}).kda ?? "", $("source").value,
                ...edits, state.invert])));
+  // ladder markers placed by hand where no band was found
+  state.marks.forEach((marks, i) => marks.filter((q) => !state.results[i].bands.some((b) => Math.abs(b.y - q.y) <= 1))
+    .forEach((q) => rows.push([i + 1, lanePairs()[i][0], lanePairs()[i][1] - 1, q.y, q.x.toFixed(1), "ladder (placed)",
+                               "", "", "", q.kda, $("source").value, ...edits, state.invert])));
   save(new Blob([rows.map((r) => r.join(",")).join("\n") + "\n"], { type: "text/csv" }), `${state.src.name}_bands.csv`);
 });
 
@@ -418,8 +547,8 @@ $("invert").addEventListener("click", () => {
   applyTone();
 });
 $("reset-edits").addEventListener("click", () => resetEdits());
-$("lanes").addEventListener("change", () => { state.bounds = null; state.laneNote = ""; analyse(); });
-$("find-lanes").addEventListener("click", () => { state.countLanes = true; analyse(); });
+$("lanes").addEventListener("change", () => { state.bounds = null; state.laneNote = ""; resetLadders(); analyse(); });
+$("find-lanes").addEventListener("click", () => { state.countLanes = true; resetLadders(); analyse(); });
 window.addEventListener("resize", () => {
   if (state.box) drawEditor();
   if (state.cropImg && state.results) drawResults();
