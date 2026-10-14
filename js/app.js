@@ -2,15 +2,15 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=0ce2184c";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=0ce2184c";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=0ce2184c";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=0ce2184c";
-import { median } from "./signal.js?v=0ce2184c";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=0ce2184c";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=0ce2184c";
-import { LADDERS } from "./ladders.js?v=0ce2184c";
-import { drawIcons } from "./icons.js?v=0ce2184c";
+import { readImage } from "./image.js?v=9b029f78";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=9b029f78";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=9b029f78";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=9b029f78";
+import { median } from "./signal.js?v=9b029f78";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=9b029f78";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=9b029f78";
+import { LADDERS } from "./ladders.js?v=9b029f78";
+import { drawIcons } from "./icons.js?v=9b029f78";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -723,6 +723,31 @@ function drawAnnotations(force = false) {
   table.replaceChildren(head, ...rows);
   paintGroups();
 }
+
+// Pasting several lines into a lane annotation box fills that lane and the ones below,
+// one line per lane; tab-separated columns (e.g. copied from a spreadsheet) fill across
+// Lane label → Annotation → Volume from the column pasted into. One line pastes normally.
+$("annot").addEventListener("paste", (e) => {
+  const input = e.target.closest("input");
+  const cols = ["lane-id", "lane-text", "lane-vol"];
+  const col = input ? cols.findIndex((c) => input.classList.contains(c)) : -1;
+  const text = (e.clipboardData || window.clipboardData)?.getData("text") ?? "";
+  if (col < 0 || !/[\n\t]/.test(text.replace(/\s+$/, ""))) return;
+  e.preventDefault();
+  const lines = text.replace(/\r/g, "").replace(/\n+$/, "").split("\n");
+  const rows = [...$("annot").querySelectorAll("tr")].slice(1);
+  const start = rows.indexOf(input.closest("tr"));
+  lines.forEach((line, r) => {
+    const tr = rows[start + r];
+    if (!tr) return; // more lines than lanes: the rest are dropped
+    line.split("\t").forEach((cell, c) => {
+      const box = cols[col + c] && tr.querySelector(`.${cols[col + c]}`);
+      if (!box) return;
+      box.value = cell.trim();
+      box.dispatchEvent(new Event("input")); // stores it and updates the figure and caption
+    });
+  });
+});
 
 function paintGroups() {
   for (const td of $("annot").querySelectorAll(".group-cell")) {

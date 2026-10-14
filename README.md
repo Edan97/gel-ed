@@ -63,7 +63,9 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
    volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
    with the lane number, used on the figure), an annotation and a volume (µL), and one
    column per **group** (e.g. non-reducing / reducing): name it at the top, then click
-   a lane's cell and drag to cover a continuous run of lanes. **Band annotations**
+   a lane's cell and drag to cover a continuous run of lanes. Pasting several lines
+   into a lane box fills that lane and the ones below (tab-separated columns from a
+   spreadsheet fill across label → annotation → volume). **Band annotations**
    (collapsible, appears once a band is marked): each marked band's estimated MW ±
    uncertainty and an annotation, also in the bands CSV. Masses are corrected for each
    lane running differently from the lane next to its ladder (a shift and slight

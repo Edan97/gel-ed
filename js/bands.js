@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=0ce2184c";
+import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=9b029f78";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
