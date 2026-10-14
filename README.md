@@ -22,7 +22,9 @@ behind it.
    - The whole image is analysed; blank corners left by rotating contribute nothing. Drag
      the rectangle's corners and edges to leave something out (e.g. labels above the
      lanes); everything outside it is greyed out.
-3. **Lanes and bands**: the number of lanes is estimated when an image loads and when
+3. **Lanes and bands**: lanes are named A, B, C, … (AA, AB, … after Z) and bands by
+   lane and position from the top: A.1, A.2, … (the "band" column of the bands CSV).
+   The number of lanes is estimated when an image loads and when
    you press **Find lanes**: it finds the pale gaps between lanes and counts them.
    Straighten the gel first; tilted lanes blur the gaps. Typing a number places exactly
    that many. Lanes are placed at the clearest gaps with widths kept regular; drag the

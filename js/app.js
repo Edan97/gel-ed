@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=27dea12d";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=27dea12d";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=27dea12d";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=27dea12d";
-import { median } from "./signal.js?v=27dea12d";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=27dea12d";
-import { LADDERS } from "./ladders.js?v=27dea12d";
-import { drawIcons } from "./icons.js?v=27dea12d";
+import { readImage } from "./image.js?v=529babd3";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=529babd3";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=529babd3";
+import { greyToImageData, drawOverlay, drawDividers, laneName } from "./draw.js?v=529babd3";
+import { median } from "./signal.js?v=529babd3";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=529babd3";
+import { LADDERS } from "./ladders.js?v=529babd3";
+import { drawIcons } from "./icons.js?v=529babd3";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -456,7 +456,7 @@ function drawLadderCards() {
     card.querySelector(".ladder-sizes").textContent = `${LADDERS[ladder.type].kda.join(", ")} kDa`;
     const laneSelect = card.querySelector(".ladder-lane");
     const nLanes = state.bounds ? state.bounds.length - 1 : 1;
-    for (let k = 1; k <= nLanes; k++) laneSelect.add(new Option(String(k), String(k)));
+    for (let k = 1; k <= nLanes; k++) laneSelect.add(new Option(laneName(k - 1), String(k)));
     laneSelect.value = String(Math.min(ladder.lane, nLanes));
     card.querySelector(".ladder-note").textContent = ladder.note || "";
     const changed = () => { ladder.manual = false; ladder.markers = null; if (state.results) { assignLadders(); drawResults(); } };
@@ -503,16 +503,16 @@ $("dl-image").addEventListener("click", () => {
 $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
   const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
-  const rows = [["lane", "lane_start_col", "lane_end_col", "row", "col", "kind", "saturated", "snr", "kDa", "ladder_size_kDa", "read_from",
+  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kind", "saturated", "snr", "kDa", "ladder_size_kDa", "read_from",
                  ...GEOMETRY, ...TONE, "invert"]];
-  lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) =>
-    rows.push([i + 1, s, e - 1, b.y, b.x.toFixed(1), b.kind, b.saturated, b.snr.toFixed(1),
+  lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b, n) =>
+    rows.push([`${laneName(i)}.${n + 1}`, laneName(i), s, e - 1, b.y, b.x.toFixed(1), b.kind, b.saturated, b.snr.toFixed(1),
                b.kda !== null ? b.kda.toFixed(1) : b.label,
                (state.marks[i].find((q) => Math.abs(q.y - b.y) <= 1) || {}).kda ?? "", $("source").value,
                ...edits, state.invert])));
   // ladder markers placed by hand where no band was found
   state.marks.forEach((marks, i) => marks.filter((q) => !state.results[i].bands.some((b) => Math.abs(b.y - q.y) <= 1))
-    .forEach((q) => rows.push([i + 1, lanePairs()[i][0], lanePairs()[i][1] - 1, q.y, q.x.toFixed(1), "ladder (placed)",
+    .forEach((q) => rows.push(["", laneName(i), lanePairs()[i][0], lanePairs()[i][1] - 1, q.y, q.x.toFixed(1), "ladder (placed)",
                                "", "", "", q.kda, $("source").value, ...edits, state.invert])));
   save(new Blob([rows.map((r) => r.join(",")).join("\n") + "\n"], { type: "text/csv" }), `${state.src.name}_bands.csv`);
 });
