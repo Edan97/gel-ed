@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gel-ed · lane counting</title>
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
+    table { border-collapse: collapse; } td, th { padding: 0.25rem 0.7rem; border-bottom: 1px solid #ddd; text-align: left; }
+    .ok { color: #1a7f37; font-weight: 600; } .fail { color: #d03b3b; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Lane counting</h1>
+  <p>Runs <code>countLanes</code> (js/bands.js) on gel_02, which has 13 lanes, with and without the labels above the
+    lanes, and on the 3°-rotated copy after straightening it by 3°. Also shows what it gives on the first sample
+    (true count not recorded) and on unstraightened images (tilt blurs the gaps; straighten first). Serve the
+    repository root after running <code>scoping/run_all.py</code>.</p>
+  <p id="result">Running…</p>
+  <table id="table"></table>
+  <script type="module">
+    import { readImage } from "../js/image.js?v=cca3f4d6";
+    import * as T from "../js/transform.js?v=cca3f4d6";
+    import { countLanes } from "../js/bands.js?v=cca3f4d6";
+
+    const get = async (u) => {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error(`${u}: ${r.status} (run scoping/run_all.py first)`);
+      const b = await r.blob();
+      return readImage(new File([b], u, { type: b.type }));
+    };
+    const straightened = (img, rotation) => {
+      const m = T.matrix(img.w, img.h, { rotation }), box = T.frame(img.w, img.h, m);
+      return [T.warp(img.grey, img.w, img.h, m, box), box.W, box.H];
+    };
+    try {
+      const A = await get("../scoping/samples/gel_02.jpg");
+      const R = await get("../scoping/out/gel_02_rot3.png");
+      const G1 = await get("../scoping/samples/210826_Het_Mut_IVP_Opt_2.tif");
+      const cases = [
+        ["gel_02, below the labels", [A.grey.slice(140 * A.w), A.w, A.h - 140], 13],
+        ["gel_02, whole image", [A.grey, A.w, A.h], 13],
+        ["gel_02 rotated 3°, straightened by 3°", straightened(R, 3), 13],
+        ["gel_02 rotated 3°, not straightened", [R.grey, R.w, R.h], null],
+        ["first sample (210826…tif), whole image", [G1.grey, G1.w, G1.h], null],
+      ];
+      const table = document.getElementById("table");
+      table.innerHTML = "<tr><th>Image</th><th>Lanes found</th><th>Lane width (px)</th><th>Expected</th><th></th></tr>";
+      let failed = 0;
+      for (const [name, args, want] of cases) {
+        const { n, pitch } = countLanes(...args);
+        const ok = want === null ? null : n === want;
+        if (ok === false) failed++;
+        table.insertAdjacentHTML("beforeend", `<tr><td>${name}</td><td>${n}</td><td>${Math.round(pitch)}</td>` +
+          `<td>${want ?? "—"}</td><td class="${ok ? "ok" : ok === false ? "fail" : ""}">${ok ? "ok" : ok === false ? "FAIL" : ""}</td></tr>`);
+      }
+      const res = document.getElementById("result");
+      res.className = failed ? "fail" : "ok";
+      res.textContent = failed ? `${failed} check(s) failed` : "All checks pass";
+      document.title = (failed ? "FAIL" : "PASS") + " · " + document.title;
+    } catch (e) {
+      document.getElementById("result").textContent = e.message;
+    }
+  </script>
+</body>
+</html>

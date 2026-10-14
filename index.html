@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=f1b74688">
-  <script type="module" src="js/app.js?v=f1b74688"></script>
+  <link rel="stylesheet" href="css/style.css?v=cca3f4d6">
+  <script type="module" src="js/app.js?v=cca3f4d6"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="f1b74688">version 4</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="cca3f4d6">version 5</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -93,12 +93,14 @@
           <div class="controls">
             <fieldset>
               <legend>Lanes</legend>
-              <label class="row">Number of lanes <input type="number" id="lanes" min="1" max="60" value="10"></label>
+              <label class="row">Number of lanes <input type="number" id="lanes" min="1" max="60" value=""></label>
               <div class="buttons">
                 <button type="button" id="find-lanes" class="btn">Find lanes</button>
                 <button type="button" id="redo" class="btn">Redo analysis</button>
               </div>
-              <p class="hint">Lanes are placed at the clearest gaps. Drag the dashed dividers to adjust.</p>
+              <p class="hint"><strong>Find lanes</strong> counts the lanes from the gaps between them and places them;
+                straighten the gel first, as tilted lanes blur the gaps. Typing a number places exactly that many.
+                Drag the dashed dividers to adjust.</p>
             </fieldset>
             <fieldset>
               <legend>Band finding</legend>

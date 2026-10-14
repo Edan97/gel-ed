@@ -196,6 +196,14 @@ editing and the band-finding overlay:
   perspective as one projective transform about the image centre; a crop that can never
   include area outside the original image (all four corners must lie inside the
   transformed outline).
+- **Lane count**: found from the pale gaps between lanes after rescaling the column
+  profile to its local range (a faint lane next to a saturated one then both read as
+  lanes); lane width = median gap spacing; missed gaps filled where two gaps are about
+  two lane widths apart; empty edge margins not counted. gel_02: 13 lanes, with or
+  without the labels, and on the 3°-rotated copy once straightened (`tests/lanes.html`).
+  Tilted lanes blur the gaps (the unstraightened copy gives 27), so straighten first.
+  Looking for a repeating spacing (autocorrelation) failed: gel_02's lanes alternate
+  faint/strong, so the pattern repeats every 2 or 6 lanes more strongly than every lane.
 - **Lanes**: placed like the teeth of a comb (dividers on the palest columns, inner lanes
   0.8–1.2× the average width, outer lanes 0.3–1.6×), then adjustable by dragging. On
   gel_02 with 13 lanes, every divider lands within 23 px of the true gap (most within

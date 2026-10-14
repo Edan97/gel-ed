@@ -2,12 +2,12 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=f1b74688";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f1b74688";
-import { bandsFromProfile, coreColumns, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f1b74688";
-import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=f1b74688";
-import { median } from "./signal.js?v=f1b74688";
-import { drawIcons } from "./icons.js?v=f1b74688";
+import { readImage } from "./image.js?v=cca3f4d6";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=cca3f4d6";
+import { bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=cca3f4d6";
+import { greyToImageData, drawOverlay, drawDividers } from "./draw.js?v=cca3f4d6";
+import { median } from "./signal.js?v=cca3f4d6";
+import { drawIcons } from "./icons.js?v=cca3f4d6";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -25,6 +25,8 @@ const state = {
   cropUser: false,  // trimmed by hand (otherwise it follows the whole image)
   invert: false,
   bounds: null,     // lane boundaries in crop columns
+  countLanes: true, // next analysis estimates the number of lanes (on load and "Find lanes")
+  laneNote: "",
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -43,6 +45,7 @@ async function load(file) {
     state.src = { grey, w, h, name: file.name.replace(/\.[^.]+$/, "") };
     resetEdits(false);
     state.bounds = null;
+    state.countLanes = true;
     $("workspace").hidden = false;
     $("edit-stage").style.setProperty("--ar", `${w} / ${h}`); // display box keeps the original's shape
     $("drop").classList.add("compact");
@@ -253,6 +256,13 @@ function analyse() {
     pending = false;
     state.cropImg = cropImage();
     const { grey, w, h } = state.cropImg;
+    if (state.countLanes) {
+      const est = countLanes(grey, w, h);
+      $("lanes").value = Math.max(1, Math.min(60, est.n));
+      state.laneNote = `Found ${est.n} lanes (typical lane ${Math.round(est.pitch)} px wide). `;
+      state.countLanes = false;
+      state.bounds = null;
+    }
     const n = Math.max(1, Math.min(60, parseInt($("lanes").value, 10) || 1));
     if (!state.bounds || state.bounds.length !== n + 1 || state.bounds[n] !== w) state.bounds = findLanes(grey, w, h, n);
     computeBands();
@@ -276,7 +286,7 @@ function drawResults(active = -1) {
   drawOverlay(ctx, lanePairs(), state.results, top, px);
   const counts = state.results.map((r) => r.bands.length);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
-  $("summary").textContent = `${counts.length} lanes, ${counts.reduce((a, b) => a + b, 0)} bands ` +
+  $("summary").textContent = state.laneNote + `${counts.length} lanes, ${counts.reduce((a, b) => a + b, 0)} bands ` +
     `(per lane: ${counts.join(", ")}), read from the ${from}. Rows and columns are in the analysed area.`;
 }
 
@@ -366,8 +376,8 @@ $("invert").addEventListener("click", () => {
   applyTone();
 });
 $("reset-edits").addEventListener("click", () => resetEdits());
-$("lanes").addEventListener("change", () => { state.bounds = null; analyse(); });
-$("find-lanes").addEventListener("click", () => { state.bounds = null; analyse(); });
+$("lanes").addEventListener("change", () => { state.bounds = null; state.laneNote = ""; analyse(); });
+$("find-lanes").addEventListener("click", () => { state.countLanes = true; analyse(); });
 window.addEventListener("resize", () => {
   if (state.box) drawEditor();
   if (state.cropImg && state.results) drawResults();

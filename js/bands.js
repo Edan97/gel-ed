@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=f1b74688";
+import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=cca3f4d6";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -129,15 +129,8 @@ export function profilesFromOriginal(src, w, h, m, box, rect, bounds, core, satL
   }));
 }
 
-// Lane boundaries for n lanes across an image, chosen together like the teeth of a comb:
-// the n-1 dividers sit on the palest columns (gaps between lanes) they can, while every
-// inner lane stays 0.8-1.2x the average lane width and the outer two 0.3-1.6x (ladders
-// are often narrower, and there may be margin at the edges). Comb teeth are evenly
-// spaced, and a faint lane can be as pale as a gap, so the inner limits are tight
-// (on gel_02 every inner lane is 0.9-1.03x). Dynamic programming over columns finds
-// the best set. Returns n+1 boundaries from 0 to w.
-export function findLanes(img, w, h, n) {
-  if (n < 2) return [0, w];
+// Mean darkness down each column, ignoring blank (NaN) pixels; blank columns count as pale.
+function columnDarkness(img, w, h) {
   const col = new Float64Array(w), cnt = new Float64Array(w);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -147,10 +140,68 @@ export function findLanes(img, w, h, n) {
       cnt[x]++;
     }
   }
-  const pitch = w / n;
   let pale = Infinity;
   for (let x = 0; x < w; x++) if (cnt[x]) pale = Math.min(pale, col[x] / cnt[x]);
-  const s = gaussian1d(col.map((v, x) => (cnt[x] ? v / cnt[x] : pale)), Math.max(2, pitch / 20));
+  return col.map((v, x) => (cnt[x] ? v / cnt[x] : pale));
+}
+
+// How many lanes? Finds the pale gaps between lanes and counts them.
+// Lanes differ hugely in darkness (a faint lane next to a saturated one), so the column
+// profile is first rescaled to its own local range (window about one lane wide): every
+// lane then reads as "dark" and every gap as "pale". Gaps are peaks of that paleness
+// (prominence >= 0.2); the lane width is the median spacing between neighbouring gaps.
+// Gaps closer than half a lane are merged; a spacing of about k lane widths counts as k
+// lanes (missed gaps). Each edge region counts as one lane (more if it's at least 1.6
+// lane widths across), unless nothing in it is darker than the gaps plus 30% of the way
+// to a typical lane: then it's empty margin. On gel_02 this finds all 12 gaps, each
+// within 16 px: 13 lanes.
+export function countLanes(img, w, h) {
+  const s = gaussian1d(columnDarkness(img, w, h), 2);
+  const maxFilter = (a, size) => minFilter1d(a.map((v) => -v), size).map((v) => -v);
+  const gapsWith = (win) => {
+    win = Math.max(5, Math.round(win) | 1);
+    const lo = minFilter1d(s, win), hi = maxFilter(s, win);
+    const pale = s.map((v, i) => (hi[i] - v) / ((hi[i] - lo[i]) || 1)); // 1 = palest nearby
+    return findPeaks(pale, 0.2);
+  };
+  const median = (a) => { const t = [...a].sort((x, y) => x - y); return t[Math.floor(t.length / 2)]; };
+  const spacingOf = (g) => median(g.slice(1).map((p, i) => p.i - g[i].i));
+  let gaps = gapsWith(0.08 * w);                     // first guess: about 1/12 of the width
+  if (gaps.length >= 2) gaps = gapsWith(spacingOf(gaps)); // then a window one lane wide
+  if (gaps.length < 2) return { n: gaps.length + 1, pitch: w / (gaps.length + 1), gaps: gaps.map((g) => g.i) };
+  let pitch = spacingOf(gaps);
+  const merged = [];
+  for (const g of gaps) {
+    const last = merged[merged.length - 1];
+    if (last && g.i - last.i < pitch / 2) { if (g.prom > last.prom) merged[merged.length - 1] = g; } else merged.push(g);
+  }
+  gaps = merged;
+  pitch = spacingOf(gaps) || pitch;
+  let n = 0;
+  for (let i = 1; i < gaps.length; i++) n += Math.max(1, Math.round((gaps[i].i - gaps[i - 1].i) / pitch));
+  const gapLevel = median(gaps.map((g) => s[g.i]));
+  const laneLevel = median(gaps.slice(1).map((g, i) => s[Math.round((g.i + gaps[i].i) / 2)]));
+  const edge = (x0, x1) => {
+    let darkest = -Infinity;
+    for (let x = x0; x < x1; x++) darkest = Math.max(darkest, s[x]);
+    if (!(darkest >= gapLevel + 0.3 * (laneLevel - gapLevel))) return 0; // empty margin
+    return x1 - x0 >= 1.6 * pitch ? Math.round((x1 - x0) / pitch) : 1;
+  };
+  n += edge(0, gaps[0].i) + edge(gaps[gaps.length - 1].i + 1, w);
+  return { n, pitch, gaps: gaps.map((g) => g.i) };
+}
+
+// Lane boundaries for n lanes across an image, chosen together like the teeth of a comb:
+// the n-1 dividers sit on the palest columns (gaps between lanes) they can, while every
+// inner lane stays 0.8-1.2x the average lane width and the outer two 0.3-1.6x (ladders
+// are often narrower, and there may be margin at the edges). Comb teeth are evenly
+// spaced, and a faint lane can be as pale as a gap, so the inner limits are tight
+// (on gel_02 every inner lane is 0.9-1.03x). Dynamic programming over columns finds
+// the best set. Returns n+1 boundaries from 0 to w.
+export function findLanes(img, w, h, n) {
+  if (n < 2) return [0, w];
+  const pitch = w / n;
+  const s = gaussian1d(columnDarkness(img, w, h), Math.max(2, pitch / 20));
   let lo = Infinity, hi = -Infinity;
   for (const v of s) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   const gap = s.map((v) => (hi - v) / (hi - lo || 1)); // 1 = palest column, 0 = darkest

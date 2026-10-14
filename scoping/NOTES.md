@@ -137,6 +137,9 @@ Open questions and decisions from exploring the sample gels. Not a plan.
   warped image (tests/straighten.html). The largest-blank-free-rectangle crop is gone:
   the whole image is analysed, trimming is optional. Fallback if this disappoints: drop
   geometry and keep only brightness/contrast.
+- **Web: lane count** estimated from gaps (local-range rescaled column profile, median
+  gap spacing). Correct (13) on gel_02 when straight; drifts when tilted > ~0.5°
+  (gaps blur). First sample gives 11 (true count not recorded).
 
 ## Sample quirks
 

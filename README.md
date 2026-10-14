@@ -22,8 +22,11 @@ behind it.
    - The whole image is analysed; blank corners left by rotating contribute nothing. Drag
      the rectangle's corners and edges to leave something out (e.g. labels above the
      lanes); everything outside it is greyed out.
-3. **Lanes and bands**: set the number of lanes; they're placed at the clearest gaps
-   between lanes, with lane widths kept regular. Drag the dashed dividers to adjust.
+3. **Lanes and bands**: the number of lanes is estimated when an image loads and when
+   you press **Find lanes**: it finds the pale gaps between lanes and counts them.
+   Straighten the gel first; tilted lanes blur the gaps. Typing a number places exactly
+   that many. Lanes are placed at the clearest gaps with widths kept regular; drag the
+   dashed dividers to adjust.
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
    Profiles are read from the **original pixels** by default: each pixel of the loaded
    image is placed through the edits and counted once, never blended, so straightening
@@ -48,6 +51,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |
+| `tests/lanes.html` | Lane counting on the samples (gel_02 has 13 lanes) |
 | `tests/straighten.html` | Straightens a 3°-rotated copy of the sample and compares reading original pixels with reading the edited image |
 | `tools/stamp_version.py` | Version stamps and counter for the web page (run before committing web changes) |
 | `gel_ed/load.py` | Python loader: any format to 16-bit greyscale |
