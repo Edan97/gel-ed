@@ -28,10 +28,10 @@ export function greyToImageData(ctx, grey, w, h) {
 // Overlay on a canvas already holding the gel, drawn `top` pixels below the canvas top.
 // px = size of one screen pixel in canvas pixels, so lines stay visible when scaled down.
 // showProfiles: draw each lane's profile with peaks, saturated peaks and shoulders marked.
-// Otherwise circles at each band's middle (b.x): ladder bands filled and labelled with
-// their size (marks: per lane [{x, y, kda, ladder, i}]), other bands hollow and labelled
-// with their name (lane.letter, e.g. 2.C; masses are in the CSV). drag: a ladder marker being moved {mark, x, y}.
-export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, marks = null, drag = null) {
+// Otherwise only marked bands: ladder bands filled and labelled with their size (marks:
+// per lane [{x, y, kda, ladder, i}]) and the bands the user clicked (picks: per lane
+// [{x, y, name}]) hollow and labelled with their name. drag: a ladder marker being moved.
+export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, marks = null, drag = null, picks = null) {
   ctx.save();
   ctx.lineJoin = "round";
   lanes.forEach(([start, end], li) => {
@@ -39,14 +39,12 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
     if (!showProfiles) {
       ctx.strokeStyle = COLOURS.peak;
       ctx.lineWidth = 1.8 * px;
-      results[li].bands.forEach((b, n) => {
-        if (b.ladderBand) return;
-        const x = b.x ?? (start + end) / 2;
+      for (const q of (picks && picks[li]) || []) {
         ctx.beginPath();
-        ctx.arc(x, top + b.y, 6 * px, 0, 2 * Math.PI);
+        ctx.arc(q.x, top + q.y, 6 * px, 0, 2 * Math.PI);
         ctx.stroke();
-        label(ctx, `${li + 1}.${bandLetter(n)}`, x + 9 * px, top + b.y, px, "#222222"); // its name
-      });
+        label(ctx, q.name, q.x + 9 * px, top + q.y, px, "#222222");
+      }
       for (const q of (marks && marks[li]) || []) {
         const moving = drag && drag.mark === q;
         const x = moving ? drag.x : q.x, y = top + (moving ? drag.y : q.y);

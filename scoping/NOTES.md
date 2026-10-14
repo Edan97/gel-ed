@@ -82,6 +82,19 @@ Open questions and decisions from exploring the sample gels. Not a plan.
   stretched) which may mean the band-to-size assignment is off; worth checking
   against the ladder's datasheet image.
 
+- **Web: bands are marked by clicking** (snap to nearest found band, or create one);
+  names count marked bands only. Found bands are only all shown under Show profiles.
+- **Auto-fit (feel only, not built).** Score = sharpness (sum of squared steps) of the
+  column profile (lanes vertical) plus the row profile (bands level), computed by
+  projecting every pixel of a 4x-downsampled copy through the transform (no
+  resampling). 1.3 ms per evaluation. On the 3°-rotated copy the score peaks exactly at
+  3° and sharply (227 vs ~40 one degree away), so the search needs fine steps.
+  Coordinate search over rotation (0.1°), skew and distort (0.002), 3 rounds: ~970
+  evaluations, 0.3–0.4 s. Rotated copy: 3.0°, skew −0.002, distort 0. Original gel_02:
+  2.7°, skew −0.002, distort 0.004. Open: the gel is sheared (lanes lean one way, bands
+  slope the other), so fitting lanes (columns: rotation + skew) and bands (rows:
+  distort) as separate scores may work better than one combined score.
+
 ## Want to detect (not attempted yet)
 
 - **Clusters of close bands on a raised background.** In `gel_02.jpg` lane

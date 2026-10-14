@@ -31,9 +31,10 @@ behind it.
    that many. Lanes are placed at the clearest gaps with widths kept regular; drag the
    dashed dividers to adjust.
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
-   Each band found is marked with a hollow red circle at the band's middle (halfway
-   between its edges, measured at half its darkness), labelled with its name (masses
-   are in the bands CSV);
+   **Click a band to mark it**: the nearest band found in that lane gets a hollow red
+   circle at its middle (halfway between its edges, measured at half its darkness),
+   labelled with its name; if no band was found there, one is created where you clicked.
+   Click it again to unmark. The bands CSV lists marked and ladder bands with masses;
    **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
    shoulders marked. Profiles are read from the **edited image** by default; *original

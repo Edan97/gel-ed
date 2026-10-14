@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=5325de9e";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=5325de9e";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=5325de9e";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter } from "./draw.js?v=5325de9e";
-import { median } from "./signal.js?v=5325de9e";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=5325de9e";
-import { LADDERS } from "./ladders.js?v=5325de9e";
-import { drawIcons } from "./icons.js?v=5325de9e";
+import { readImage } from "./image.js?v=24d8e66a";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=24d8e66a";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=24d8e66a";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter } from "./draw.js?v=24d8e66a";
+import { median } from "./signal.js?v=24d8e66a";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=24d8e66a";
+import { LADDERS } from "./ladders.js?v=24d8e66a";
+import { drawIcons } from "./icons.js?v=24d8e66a";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -31,6 +31,8 @@ const state = {
   laneNote: "",
   ladders: [],      // one per ladder card: {type (key of LADDERS), lane (1-based), markers, manual, note}
   marks: null,      // per lane: ladder markers to draw [{y, x, kda, ladder, i}]
+  picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
+  pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -260,8 +262,11 @@ function computeBands() {
 
 // ---------- ladders: picking, calibration, masses ----------
 
+// Ladder picks and the user's marked bands start over when the geometry, the analysed
+// area or the lanes change (their rows and lanes no longer mean the same thing).
 function resetLadders() {
   for (const l of state.ladders) { l.manual = false; l.markers = null; }
+  state.picks = [];
 }
 
 const fmtKda = (k) => (k >= 10 ? k.toFixed(0) : k.toFixed(1));
@@ -300,25 +305,50 @@ function assignLadders() {
     lad.markers.forEach((q, i) => state.marks[lad.lane - 1].push(
       { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i }));
   });
-  // masses: each band read against the nearest ladder that has a calibration
+  // marked bands: named lane.letter top to bottom, mass from the nearest ladder with a
+  // calibration (outside the ladder: ">top" / "<bottom")
   const centre = ([s, e]) => (s + e) / 2;
-  lanes.forEach((lane, j) => {
-    const marks = state.marks[j];
-    const usable = state.ladders.filter((l) => l.calib);
-    const near = usable.sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane))
-                                      - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
-    for (const b of state.results[j].bands) {
-      b.ladderBand = marks.some((q) => Math.abs(q.y - b.y) <= 1);
-      b.kda = null;
-      b.label = "";
-      if (b.ladderBand || state.ladders.some((l) => l.lane === j + 1) || !near) continue;
-      const c = near.calib;
-      if (b.y < c.y0) b.label = `>${c.kMax}`;
-      else if (b.y > c.y1) b.label = `<${c.kMin}`;
-      else { b.kda = 10 ** c.f(b.y); b.label = fmtKda(b.kda); }
-    }
+  state.pickMarks = lanes.map((lane, j) => {
+    const near = state.ladders.filter((l) => l.calib)
+      .sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane)) - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
+    return [...(state.picks[j] || [])].sort((a, b) => a.y - b.y).map((q, n) => {
+      const out = { y: q.y, x: bandCentre(grey, w, h, lane[0], lane[1], q.y), name: `${j + 1}.${bandLetter(n)}`,
+                    created: q.created, kda: null, label: "" };
+      if (near) {
+        const c = near.calib;
+        if (q.y < c.y0) out.label = `>${c.kMax}`;
+        else if (q.y > c.y1) out.label = `<${c.kMin}`;
+        else { out.kda = 10 ** c.f(q.y); out.label = fmtKda(out.kda); }
+      }
+      return out;
+    });
   });
+  for (const r of state.results) for (const b of r.bands) b.ladderBand = false;
+  state.marks.forEach((marks, j) => { for (const b of state.results[j].bands) b.ladderBand = marks.some((q) => Math.abs(q.y - b.y) <= 1); });
   drawLadderCards();
+}
+
+// Clicking on a band marks it: the nearest band found in that lane (within 15 screen
+// px), or a new one exactly where clicked if none was found. Clicking a marked band again
+// unmarks it.
+function clickBand(p) {
+  const top = overlayCanvas.height - state.cropImg.h;
+  const y = Math.round(p.y - top);
+  if (y < 0 || y >= state.cropImg.h) return;
+  const lane = state.bounds.findIndex((b, i) => i < state.bounds.length - 1 && p.x >= b && p.x < state.bounds[i + 1]);
+  if (lane < 0) return;
+  const picks = (state.picks[lane] = state.picks[lane] || []);
+  const tol = 15 * p.px;
+  const already = picks.findIndex((q) => Math.abs(q.y - y) <= 8 * p.px);
+  if (already >= 0) picks.splice(already, 1);
+  else {
+    const snap = state.results[lane].bands.map((b) => b.y).sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0];
+    if (snap !== undefined && Math.abs(snap - y) <= tol) {
+      if (!picks.some((q) => q.y === snap)) picks.push({ y: snap, created: false });
+    } else picks.push({ y, created: true });
+  }
+  assignLadders();
+  drawResults();
 }
 
 let pending = false;
@@ -357,15 +387,17 @@ function drawResults(active = -1) {
   ctx.putImageData(greyToImageData(ctx, grey, w, h), 0, top);
   drawDividers(ctx, state.bounds, top, h, px, active);
   drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true",
-              state.marks, markDrag);
-  const counts = state.results.map((r) => r.bands.length);
+              state.marks, markDrag, state.pickMarks);
+  const found = state.results.reduce((a, r) => a + r.bands.length, 0);
+  const marked = state.pickMarks.reduce((a, m) => a + m.length, 0);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
-  $("summary").textContent = state.laneNote + `${counts.length} lanes, ${counts.reduce((a, b) => a + b, 0)} bands ` +
-    `(per lane: ${counts.join(", ")}), read from the ${from}. Rows and columns are in the analysed area.`;
+  $("summary").textContent = state.laneNote + `${state.results.length} lanes, ${found} bands found, ${marked} marked. ` +
+    `Click a band to mark it; click it again to unmark. Profiles read from the ${from}.`;
 }
 
 // A ladder marker under the pointer: {lane, mark}. Only in the circles view.
 let markDrag = null;
+let clickStart = null; // a press that isn't on a marker or divider: a click on a band if it doesn't move
 function markerAt(p) {
   if (!state.marks || $("show-profiles").getAttribute("aria-pressed") === "true") return null;
   const top = overlayCanvas.height - state.cropImg.h;
@@ -389,7 +421,10 @@ overlayCanvas.addEventListener("pointerdown", (e) => {
   }
   let best = -1, dist = 8 * p.px;
   state.bounds.forEach((b, i) => { if (Math.abs(b - p.x) <= dist) { best = i; dist = Math.abs(b - p.x); } });
-  if (best < 0) return;
+  if (best < 0) {
+    if ($("show-profiles").getAttribute("aria-pressed") !== "true") clickStart = p;
+    return;
+  }
   laneDrag = best;
   overlayCanvas.setPointerCapture(e.pointerId);
 });
@@ -418,6 +453,12 @@ overlayCanvas.addEventListener("pointermove", (e) => {
 // screen px), otherwise stays where it was dropped. Dropped on another of the ladder's
 // markers, the two swap. Moved markers stay until the geometry, area, lanes or ladder change.
 overlayCanvas.addEventListener("pointerup", (e) => {
+  if (clickStart) {
+    const p = canvasPoint(overlayCanvas, e), s0 = clickStart;
+    clickStart = null;
+    if (Math.hypot(p.x - s0.x, p.y - s0.y) <= 5 * p.px) clickBand(p);
+    return;
+  }
   if (markDrag) {
     const p = canvasPoint(overlayCanvas, e);
     const { lane, mark } = markDrag;
@@ -503,17 +544,18 @@ $("dl-image").addEventListener("click", () => {
 $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
   const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
-  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kind", "saturated", "snr", "kDa", "ladder_size_kDa", "read_from",
-                 ...GEOMETRY, ...TONE, "invert"]];
-  lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b, n) =>
-    rows.push([`${i + 1}.${bandLetter(n)}`, i + 1, s, e - 1, b.y, b.x.toFixed(1), b.kind, b.saturated, b.snr.toFixed(1),
-               b.kda !== null ? b.kda.toFixed(1) : b.label,
-               (state.marks[i].find((q) => Math.abs(q.y - b.y) <= 1) || {}).kda ?? "", $("source").value,
-               ...edits, state.invert])));
-  // ladder markers placed by hand where no band was found
-  state.marks.forEach((marks, i) => marks.filter((q) => !state.results[i].bands.some((b) => Math.abs(b.y - q.y) <= 1))
-    .forEach((q) => rows.push(["", i + 1, lanePairs()[i][0], lanePairs()[i][1] - 1, q.y, q.x.toFixed(1), "ladder (placed)",
-                               "", "", "", q.kda, $("source").value, ...edits, state.invert])));
+  // marked bands and ladder bands; kind/saturated/snr come from the band found at that row (if any)
+  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kDa", "ladder_size_kDa", "found_or_created",
+                 "kind", "saturated", "snr", "read_from", ...GEOMETRY, ...TONE, "invert"]];
+  const found = (i, y) => state.results[i].bands.find((b) => Math.abs(b.y - y) <= 1);
+  const extra = (b) => (b ? [b.kind, b.saturated, b.snr.toFixed(1)] : ["", "", ""]);
+  lanePairs().forEach(([s, e], i) => {
+    for (const q of state.marks[i]) rows.push(["", i + 1, s, e - 1, q.y, q.x.toFixed(1), q.kda, q.kda,
+      found(i, q.y) ? "found" : "created", ...extra(found(i, q.y)), $("source").value, ...edits, state.invert]);
+    for (const q of state.pickMarks[i]) rows.push([q.name, i + 1, s, e - 1, q.y, q.x.toFixed(1),
+      q.kda !== null ? q.kda.toFixed(1) : q.label, "", q.created ? "created" : "found", ...extra(found(i, q.y)),
+      $("source").value, ...edits, state.invert]);
+  });
   save(new Blob([rows.map((r) => r.join(",")).join("\n") + "\n"], { type: "text/csv" }), `${state.src.name}_bands.csv`);
 });
 
