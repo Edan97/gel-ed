@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=e642f67e";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=e642f67e";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=e642f67e";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=e642f67e";
-import { median } from "./signal.js?v=e642f67e";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=e642f67e";
-import { LADDERS } from "./ladders.js?v=e642f67e";
-import { drawIcons } from "./icons.js?v=e642f67e";
+import { readImage } from "./image.js?v=9c882b93";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=9c882b93";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=9c882b93";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=9c882b93";
+import { median } from "./signal.js?v=9c882b93";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=9c882b93";
+import { LADDERS } from "./ladders.js?v=9c882b93";
+import { drawIcons } from "./icons.js?v=9c882b93";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -552,16 +552,19 @@ drawLadderCards();
 
 // Ladder box: one row per ladder, its text pre-filled with the selected ladder (kept
 // once edited) and a volume box (left empty).
+// true while the user is typing in a text box inside el (don't rebuild under them)
+const typingIn = (el) => el.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+
 function drawLadderNotes() {
   const box = $("ladder-notes");
-  if (box.contains(document.activeElement)) return;
+  if (typingIn(box)) return;
   box.replaceChildren();
   state.ladders.forEach((lad, i) => {
     lad.noteText = lad.noteText ?? null; // null = follow the selected ladder
     const row = document.createElement("div");
     row.className = "ladder-note-row";
     row.innerHTML = `<span class="lane-no"></span><input type="text" class="ln-text">
-      <label class="vol">Volume <input type="text" class="ln-vol" placeholder="µL"></label>`;
+      <label class="vol">Volume <span class="unit-box"><input type="text" class="ln-vol" inputmode="decimal"><span class="unit">µL</span></span></label>`;
     row.querySelector(".lane-no").textContent = state.ladders.length > 1 ? `Ladder ${i + 1}` : "Ladder";
     const text = row.querySelector(".ln-text"), vol = row.querySelector(".ln-vol");
     text.value = lad.noteText ?? LADDERS[lad.type].name;
@@ -576,9 +579,9 @@ function drawLadderNotes() {
 // column per group. A group's lanes are set by clicking a cell and dragging down its
 // column, so a group is always a continuous run of lanes (from..to, lane numbers).
 let groupDrag = null; // {g, start}
-function drawAnnotations() {
+function drawAnnotations(force = false) {
   const table = $("annot");
-  if (table.contains(document.activeElement) || groupDrag) return; // don't rebuild under the user
+  if (!force && (typingIn(table) || groupDrag)) return; // don't rebuild under the user
   const n = state.bounds ? state.bounds.length - 1 : 0;
   const ladderLanes = new Set(state.ladders.map((l) => l.lane));
   const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k));
@@ -592,12 +595,17 @@ function drawAnnotations() {
     const name = th.querySelector(".group-name");
     name.value = g.name;
     name.addEventListener("input", () => { g.name = name.value; });
-    th.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(gi, 1); drawAnnotations(); });
+    th.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(gi, 1); drawAnnotations(true); });
     head.append(th);
   });
   const addTh = document.createElement("th");
   addTh.innerHTML = `<button type="button" class="btn add-group">+ Add group</button>`;
-  addTh.querySelector("button").addEventListener("click", () => { state.groups.push({ name: "", from: null, to: null }); drawAnnotations(); });
+  addTh.querySelector("button").addEventListener("click", () => {
+    state.groups.push({ name: "", from: null, to: null });
+    drawAnnotations(true);
+    const names = $("annot").querySelectorAll(".group-name");
+    names[names.length - 1].focus(); // ready to type the new group's name
+  });
   head.append(addTh);
   const rows = lanes.map((k) => {
     const tr = document.createElement("tr");

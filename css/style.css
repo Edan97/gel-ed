@@ -189,7 +189,11 @@ h3.sub { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
 .ladder-note-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; flex-wrap: wrap; }
 .ladder-note-row .ln-text { flex: 1; min-width: 14rem; }
 .ladder-note-row .vol { display: flex; align-items: center; gap: 0.35rem; }
-.ladder-note-row .ln-vol { width: 6rem; }
+.unit-box { display: inline-flex; align-items: center; background: var(--page);
+            border: 1px solid var(--border); border-radius: 6px; padding-right: 0.45rem; }
+.unit-box:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.ladder-notes .unit-box input { border: 0; background: transparent; width: 4.5rem; outline: none; text-align: right; }
+.unit-box .unit { color: var(--text-secondary); }
 .lane-no { color: var(--text-secondary); white-space: nowrap; width: 4.5rem; flex: none; }
 .annot-wrap { overflow-x: auto; }
 table.annot { border-collapse: collapse; font-size: 0.9rem; user-select: none; }
