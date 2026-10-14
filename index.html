@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=d0e06460">
-  <script type="module" src="js/app.js?v=d0e06460"></script>
+  <link rel="stylesheet" href="css/style.css?v=225ac426">
+  <script type="module" src="js/app.js?v=225ac426"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="d0e06460">version 16</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="225ac426">version 17</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -160,6 +160,8 @@
           <div class="view">
             <canvas id="overlay-canvas" class="gel"></canvas>
             <p id="summary" class="hint"></p>
+            <h3 class="sub">Lane annotations</h3>
+            <div id="lane-notes" class="lane-notes"></div>
           </div>
         </div>
       </section>
@@ -172,6 +174,9 @@
         </div>
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>
+        <label class="caption-label" for="caption">Figure caption</label>
+        <textarea id="caption" rows="4" placeholder="Write the figure caption here."></textarea>
+        <div class="buttons"><button type="button" id="caption-copy" class="btn">Copy caption</button></div>
       </section>
     </div>
   </main>

@@ -59,9 +59,12 @@ behind it.
 Band finding settings: threshold (in multiples of each lane's noise), how much of the
 lane's centre is used, smoothing, and the noise window. Defaults match the Python version.
 
-4. **Figure**: the analysed gel with the ladder sizes marked down the side (the
-   leftmost ladder on the left, a second ladder on the right), to download as PNG or
-   copy to the clipboard.
+   **Lane annotations**: an editable text field per lane under the overlay; ladder lanes
+   start as "Ladder: <name>". (Not yet used on the figure or in the CSV.)
+4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side
+   (the leftmost ladder on the left, a second ladder on the right); sizes that would
+   overlap get a longer line and sit further out. Download as PNG or copy to the
+   clipboard. A **figure caption** box underneath can be copied too.
 
 ## Repository layout
 

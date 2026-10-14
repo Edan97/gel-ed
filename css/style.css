@@ -183,3 +183,15 @@ canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touc
 
 #figure-card .buttons { margin-bottom: 0.5rem; }
 canvas.figure { max-width: 100%; width: auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+
+h3.sub { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
+.lane-notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.35rem 1rem; }
+.lane-note { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+.lane-note .lane-no { flex: none; width: 3.6rem; color: var(--text-secondary); }
+.lane-note input, #caption {
+  font: inherit; color: inherit; background: var(--page);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem; min-width: 0;
+}
+.lane-note input { flex: 1; }
+.caption-label { display: block; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+#caption { display: block; width: 100%; resize: vertical; margin-bottom: 0.5rem; }

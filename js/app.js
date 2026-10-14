@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=d0e06460";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=d0e06460";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=d0e06460";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=d0e06460";
-import { median } from "./signal.js?v=d0e06460";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=d0e06460";
-import { LADDERS } from "./ladders.js?v=d0e06460";
-import { drawIcons } from "./icons.js?v=d0e06460";
+import { readImage } from "./image.js?v=225ac426";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=225ac426";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=225ac426";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=225ac426";
+import { median } from "./signal.js?v=225ac426";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=225ac426";
+import { LADDERS } from "./ladders.js?v=225ac426";
+import { drawIcons } from "./icons.js?v=225ac426";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -33,6 +33,7 @@ const state = {
   marks: null,      // per lane: ladder markers to draw [{y, x, kda, ladder, i}]
   picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
   pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
+  laneNotes: [],    // per lane: annotation text the user typed (undefined = not edited)
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -394,6 +395,7 @@ function drawResults(active = -1) {
   $("summary").textContent = state.laneNote + `${state.results.length} lanes, ${found} bands found, ${marked} marked. ` +
     `Click a band to mark it, drag to move it, right-click to delete it. Profiles read from the ${from}.`;
   drawFigure();
+  drawLaneNotes();
 }
 
 // A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
@@ -544,6 +546,38 @@ $("add-ladder").addEventListener("click", () => {
 state.ladders.push(newLadder(1)); // most gels have one ladder, in the first lane
 drawLadderCards();
 
+// ---------- lane annotations ----------
+
+// One editable field per lane found. Ladder lanes start as "Ladder: <name>"; anything
+// typed is kept (by lane number) until changed again.
+function drawLaneNotes() {
+  const list = $("lane-notes");
+  const n = state.bounds ? state.bounds.length - 1 : 0;
+  const ladderText = (k) => {
+    const lad = state.ladders.find((l) => l.lane === k);
+    return lad ? `Ladder: ${LADDERS[lad.type].name}` : "";
+  };
+  const rows = [...list.children];
+  for (let k = 1; k <= n; k++) {
+    let row = rows[k - 1];
+    if (!row) {
+      row = document.createElement("label");
+      row.className = "lane-note";
+      row.innerHTML = `<span class="lane-no"></span><input type="text">`;
+      const input = row.querySelector("input");
+      input.addEventListener("input", () => { state.laneNotes[parseInt(row.dataset.lane, 10)] = input.value; });
+      list.append(row);
+    }
+    row.dataset.lane = String(k);
+    row.querySelector(".lane-no").textContent = `Lane ${k}`;
+    const input = row.querySelector("input");
+    const text = state.laneNotes[k] !== undefined ? state.laneNotes[k] : ladderText(k);
+    if (document.activeElement !== input && input.value !== text) input.value = text;
+    input.placeholder = "Sample, treatment, …";
+  }
+  rows.slice(n).forEach((r) => r.remove());
+}
+
 // ---------- figure ----------
 
 // The analysed gel with ladder sizes down the side: the leftmost ladder on the left, a
@@ -570,6 +604,16 @@ $("fig-copy").addEventListener("click", async () => {
     $("figure-note").textContent = "Copied to the clipboard.";
   } catch (err) {
     $("figure-note").textContent = `Couldn't copy (${err.message}); use Download instead.`;
+  }
+});
+
+$("caption-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("caption").value);
+    $("figure-note").textContent = "Caption copied to the clipboard.";
+  } catch (err) {
+    $("caption").select(); // fall back: selected, ready for Cmd+C
+    $("figure-note").textContent = `Couldn't copy the caption (${err.message}); it's selected, press Cmd+C.`;
   }
 });
 

@@ -140,18 +140,41 @@ export function drawDividers(ctx, bounds, top, height, px, active = -1) {
   ctx.restore();
 }
 
-// A figure: the gel (analysed area) on white, with ladder sizes marked down the side:
-// left = [{y, kda}] for the left side, right = the same for the right side (or null).
-// Drawn at the gel's own resolution; text and ticks scale with its height.
+// A figure: the gel (analysed area) on white, outlined, with ladder sizes marked down the
+// side: left = [{y, kda}] for the left side, right = the same for the right side (or
+// null). Labels that would overlap the one above get a longer line and sit further out.
+// Drawn at the gel's own resolution; text and lines scale with its height.
 export function renderFigure(canvas, grey, w, h, left, right) {
-  const fs = Math.max(12, Math.round(h / 45)), tick = Math.round(fs * 0.7), gap = Math.round(fs * 0.35);
+  const fs = Math.max(14, Math.round(h / 30));          // size labels
+  const kfs = Math.round(fs * 1.3);                      // "kDa"
+  const lw = 2 * Math.max(1, fs / 10);                   // lines and outline
+  const tick = Math.round(fs * 0.8), gap = Math.round(fs * 0.35), sep = fs * 1.3; // sep: closest labels on one level
   const ctx = canvas.getContext("2d");
   const font = `${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-  ctx.font = font;
-  const textW = (side) => (side ? Math.max(ctx.measureText("kDa").width, ...side.map((q) => ctx.measureText(String(q.kda)).width)) : 0);
-  const margin = (side) => (side ? Math.ceil(textW(side) + tick + gap + fs * 0.5) : Math.round(fs * 0.5));
-  const ml = margin(left), mr = margin(right), mt = Math.round(fs * 1.6), mb = Math.round(fs * 0.6);
-  canvas.width = w + ml + mr;
+  const kfont = `bold ${kfs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  // place each side's labels: level 0 next to the gel; a label too close to the one
+  // above on its level goes to the next level out (a longer line)
+  const layout = (marks) => {
+    if (!marks) return null;
+    ctx.font = font;
+    const textW = Math.max(...marks.map((q) => ctx.measureText(String(q.kda)).width));
+    const lastY = [];
+    const placed = [...marks].sort((a, b) => a.y - b.y).map((q) => {
+      let level = 0;
+      while (lastY[level] !== undefined && q.y - lastY[level] < sep) level++;
+      lastY[level] = q.y;
+      return { ...q, level };
+    });
+    const levels = Math.max(...placed.map((q) => q.level)) + 1;
+    const reach = (level) => tick + level * (textW + 2 * gap + tick);
+    ctx.font = kfont;
+    const kw = ctx.measureText("kDa").width;
+    return { placed, reach, width: Math.ceil(Math.max(reach(levels - 1) + gap + textW, kw) + fs * 0.6) };
+  };
+  const L = layout(left), R = layout(right);
+  const ml = L ? L.width : Math.round(fs * 0.6), mr = R ? R.width : Math.round(fs * 0.6);
+  const mt = Math.round(kfs * 1.7), mb = Math.round(fs * 0.8);
+  canvas.width = Math.ceil(w + ml + mr);
   canvas.height = h + mt + mb;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -160,24 +183,25 @@ export function renderFigure(canvas, grey, w, h, left, right) {
   g.putImageData(greyToImageData(g, grey, w, h), 0, 0);
   ctx.drawImage(gel, ml, mt);
   ctx.fillStyle = ctx.strokeStyle = "#000000";
-  ctx.lineWidth = Math.max(1, fs / 10);
-  ctx.font = font;
-  ctx.textBaseline = "middle";
-  const side = (marks, x0, dir) => {
-    if (!marks) return;
+  ctx.lineWidth = lw;
+  ctx.strokeRect(ml - lw / 2, mt - lw / 2, w + lw, h + lw); // outline round the gel
+  const side = (S, x0, dir) => {
+    if (!S) return;
     ctx.textAlign = dir < 0 ? "right" : "left";
-    for (const q of marks) {
-      const y = mt + q.y;
-      ctx.beginPath();
-      ctx.moveTo(x0, y);
-      ctx.lineTo(x0 + dir * tick, y);
-      ctx.stroke();
-      ctx.fillText(String(q.kda), x0 + dir * (tick + gap), y);
-    }
-    ctx.textBaseline = "alphabetic";
-    ctx.fillText("kDa", x0 + dir * (tick + gap), mt - fs * 0.45);
+    ctx.font = font;
     ctx.textBaseline = "middle";
+    for (const q of S.placed) {
+      const y = mt + q.y, end = x0 + dir * S.reach(q.level);
+      ctx.beginPath();
+      ctx.moveTo(x0 - dir * (lw / 2), y);
+      ctx.lineTo(end, y);
+      ctx.stroke();
+      ctx.fillText(String(q.kda), end + dir * gap, y);
+    }
+    ctx.font = kfont;
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("kDa", x0 + dir * (tick + gap), mt - kfs * 0.5);
   };
-  side(left, ml, -1);
-  side(right, ml + w, 1);
+  side(L, ml, -1);
+  side(R, ml + w, 1);
 }
