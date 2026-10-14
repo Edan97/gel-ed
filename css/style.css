@@ -221,3 +221,16 @@ table.band-table .band-name { font-weight: 600; white-space: nowrap; }
 table.band-table .band-mw { white-space: nowrap; font-variant-numeric: tabular-nums; padding-right: 1rem; }
 table.band-table .band-text { width: 22rem; }
 table.annot .lane-text { width: 16rem; }
+label.row.method-row { justify-content: flex-start; gap: 0.6rem; font-size: 0.9rem; }
+.method-row[hidden], #antibody-box[hidden] { display: none; }
+.method-row select, .method-row input, .antibody-row select, .antibody-row input {
+  font: inherit; color: inherit; background: var(--page);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem;
+}
+#stain { width: 14rem; }
+.antibodies { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.3rem 0 0.5rem; }
+.antibody-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+.antibody-row .lane-no { width: 5.5rem; }
+.antibody-row .ab-select { max-width: 32rem; }
+.antibody-row .ab-text { width: 26rem; max-width: 100%; }
+.antibody-row [hidden] { display: none; }

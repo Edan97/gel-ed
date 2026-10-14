@@ -59,6 +59,8 @@ behind it.
 Band finding settings: threshold (in multiples of each lane's noise), how much of the
 lane's centre is used, smoothing, and the noise window. Defaults match the Python version.
 
+   **Method** (for the caption): western blot with one or more antibodies (chosen from
+   `js/antibodies.js` or typed in), or SDS-PAGE with its stain (default Coomassie).
    **Ladder** (under the overlay): the selected ladder's name (editable) and its
    volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
    with the lane number, used on the figure), an annotation and a volume (µL), and one
@@ -79,7 +81,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
    overlap get a longer line and sit further out. Above the gel: lane labels and group
    bars with names (groups that don't overlap share a row); each can be switched off. Download as PNG
    or copy to the clipboard. The **figure caption** underneath is written from the
-   ladder and lane annotations (label, annotation and volume where filled in) and the
+   method, the ladder and lane annotations (label, annotation and volume where filled in) and the
    groups; it follows them until edited (Regenerate starts again) and can be copied.
 
 ## Repository layout
@@ -93,6 +95,7 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
 | `js/calibrate.js` | Ladder band picking (solidity) and the mass calibration (PCHIP, scipy's formulas) |
 | `js/running.js` | Correction for lanes running differently (port of `scoping/band_masses.py`) |
+| `js/antibodies.js` | Antibodies offered for western blots (used in the caption); add new ones here |
 | `js/ladders.js` | The ladders the page knows (name and sizes); add new ones here |
 | `js/icons.js` | Slider pictures, drawn with the editor's own transform |
 | `tests/parity.html` | Checks the browser band finder against Python on the same pixels |

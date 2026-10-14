@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=9b029f78">
-  <script type="module" src="js/app.js?v=9b029f78"></script>
+  <link rel="stylesheet" href="css/style.css?v=77331b52">
+  <script type="module" src="js/app.js?v=77331b52"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="9b029f78">version 25</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="77331b52">version 27</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -162,6 +162,20 @@
             <p id="summary" class="hint"></p>
             <h3 class="sub">Ladder</h3>
             <div id="ladder-notes" class="ladder-notes"></div>
+            <details class="sub-details" open>
+              <summary>Method</summary>
+              <p class="hint">Used in the figure caption.</p>
+              <label class="row method-row">Type
+                <select id="method-type">
+                  <option value="western" selected>Western blot</option>
+                  <option value="sds">SDS-PAGE</option>
+                </select></label>
+              <label class="row method-row" id="stain-row" hidden>Stain <input type="text" id="stain" value="Coomassie"></label>
+              <div id="antibody-box">
+                <div id="antibodies" class="antibodies"></div>
+                <button type="button" id="add-antibody" class="btn">Add antibody</button>
+              </div>
+            </details>
             <details class="sub-details" open>
               <summary>Lane annotations</summary>
               <p class="hint">Lane labels are used above the lanes on the figure; annotations and volumes aren't.

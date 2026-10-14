@@ -2,15 +2,16 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=9b029f78";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=9b029f78";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=9b029f78";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=9b029f78";
-import { median } from "./signal.js?v=9b029f78";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=9b029f78";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=9b029f78";
-import { LADDERS } from "./ladders.js?v=9b029f78";
-import { drawIcons } from "./icons.js?v=9b029f78";
+import { readImage } from "./image.js?v=77331b52";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=77331b52";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=77331b52";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=77331b52";
+import { median } from "./signal.js?v=77331b52";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=77331b52";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=77331b52";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=77331b52";
+import { LADDERS } from "./ladders.js?v=77331b52";
+import { drawIcons } from "./icons.js?v=77331b52";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -39,6 +40,8 @@ const state = {
   laneVols: [],     // per lane: volume loaded (µL), as typed
   aligns: {},       // running correction per "lane:refLane", cleared when bands are found again
   captionAuto: true, // the caption follows the annotations until the user edits it
+  // Method (caption only): western blot with antibodies (preset key or "custom" + text), or SDS-PAGE with a stain
+  method: { type: "western", stain: "Coomassie", antibodies: [{ key: Object.keys(ANTIBODIES)[0], text: "" }] },
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}
@@ -802,9 +805,59 @@ function drawBandNotes() {
   table.replaceChildren(head, ...rows);
 }
 
+// ---------- method ----------
+
+function drawMethod() {
+  const m = state.method;
+  $("method-type").value = m.type;
+  $("stain-row").hidden = m.type !== "sds";
+  $("antibody-box").hidden = m.type !== "western";
+  $("stain").value = m.stain;
+  const list = $("antibodies");
+  list.replaceChildren();
+  m.antibodies.forEach((ab, i) => {
+    const row = document.createElement("div");
+    row.className = "antibody-row";
+    row.innerHTML = `<span class="lane-no">Antibody ${i + 1}</span><select class="ab-select"></select>
+      <input type="text" class="ab-text" placeholder="Name (supplier, cat. #; dilution)">
+      <button type="button" class="link ab-remove">Remove</button>`;
+    const sel = row.querySelector(".ab-select"), text = row.querySelector(".ab-text");
+    for (const [key, a] of Object.entries(ANTIBODIES)) sel.add(new Option(antibodyLabel(a), key));
+    sel.add(new Option("Other (type your own)", "custom"));
+    sel.value = ab.key;
+    text.value = ab.text;
+    text.hidden = ab.key !== "custom";
+    sel.addEventListener("change", () => { ab.key = sel.value; text.hidden = ab.key !== "custom"; if (!text.hidden) text.focus(); updateCaption(); });
+    text.addEventListener("input", () => { ab.text = text.value; updateCaption(); });
+    const remove = row.querySelector(".ab-remove");
+    remove.hidden = m.antibodies.length === 1; // always at least one
+    remove.addEventListener("click", () => { m.antibodies.splice(i, 1); drawMethod(); updateCaption(); });
+    list.append(row);
+  });
+}
+
+$("method-type").addEventListener("change", () => { state.method.type = $("method-type").value; drawMethod(); updateCaption(); });
+$("stain").addEventListener("input", () => { state.method.stain = $("stain").value; updateCaption(); });
+$("add-antibody").addEventListener("click", () => {
+  state.method.antibodies.push({ key: Object.keys(ANTIBODIES)[0], text: "" });
+  drawMethod();
+  updateCaption();
+});
+drawMethod();
+
+// "Western blot probed with A and B." / "SDS-PAGE stained with Coomassie."
+function methodSentence() {
+  const m = state.method;
+  if (m.type === "sds") return m.stain.trim() ? `SDS-PAGE stained with ${m.stain.trim()}.` : "SDS-PAGE.";
+  const abs = m.antibodies.map((ab) => (ab.key === "custom" ? ab.text.trim() : antibodyCaption(ANTIBODIES[ab.key]))).filter(Boolean);
+  const list = abs.length < 3 ? abs.join(" and ") : `${abs.slice(0, -1).join(", ")} and ${abs[abs.length - 1]}`;
+  return abs.length ? `Western blot probed with ${list}.` : "Western blot.";
+}
+
 // ---------- figure caption ----------
 
-// A caption from what's filled in: each lane in order with its label, annotation and
+// A caption from what's filled in: the method (western blot antibodies, or SDS-PAGE
+// stain), then each lane in order with its label, annotation and
 // volume (ladders: the ladder's text and volume), lanes with nothing filled left out,
 // then the groups with their lanes. Human-readable, e.g.
 //   "Lane 1: MagicMark™ XP Western Protein Standard (5 µL). Lane 2: AV/+ neat (10 µL).
@@ -824,6 +877,7 @@ function generateCaption() {
     const text = (state.laneNotes[k] ?? "").trim(), v = vol(state.laneVols[k]);
     if (text || v) lines.push(`Lane ${label}: ${text || "sample"}${v}.`);
   }
+  lines.unshift(methodSentence());
   const range = (g) => (g.from === g.to ? `lane ${g.from}` : `lanes ${g.from}–${g.to}`);
   const groups = state.groups.filter((g) => g.from !== null && g.name.trim());
   if (groups.length) lines.push(`Groups: ${groups.map((g) => `${g.name.trim()}, ${range(g)}`).join("; ")}.`);
