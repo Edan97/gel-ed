@@ -2,14 +2,14 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=225ac426";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=225ac426";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=225ac426";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=225ac426";
-import { median } from "./signal.js?v=225ac426";
-import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=225ac426";
-import { LADDERS } from "./ladders.js?v=225ac426";
-import { drawIcons } from "./icons.js?v=225ac426";
+import { readImage } from "./image.js?v=df452940";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=df452940";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=df452940";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=df452940";
+import { median } from "./signal.js?v=df452940";
+import { bandSolidity, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=df452940";
+import { LADDERS } from "./ladders.js?v=df452940";
+import { drawIcons } from "./icons.js?v=df452940";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -34,6 +34,7 @@ const state = {
   picks: [],        // per lane: bands the user marked [{y, created}] (created: no band was found there)
   pickMarks: null,  // per lane: marked bands to draw [{y, x, name, kda, label, created}]
   laneNotes: [],    // per lane: annotation text the user typed (undefined = not edited)
+  groups: [],       // lane groups: [{name, from, to}] (lane numbers, inclusive, continuous)
   results: null,
   cropImg: null,    // {grey, w, h}
 };
@@ -396,6 +397,7 @@ function drawResults(active = -1) {
     `Click a band to mark it, drag to move it, right-click to delete it. Profiles read from the ${from}.`;
   drawFigure();
   drawLaneNotes();
+  drawLaneGroups();
 }
 
 // A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
@@ -577,6 +579,50 @@ function drawLaneNotes() {
   }
   rows.slice(n).forEach((r) => r.remove());
 }
+
+// ---------- lane groups ----------
+
+// Each group: a name and a continuous run of lanes (from..to). Ranges are kept within
+// the lanes found; overlapping groups are flagged.
+function drawLaneGroups() {
+  const list = $("lane-groups");
+  if (list.contains(document.activeElement)) return; // don't rebuild under the user's cursor
+  const n = state.bounds ? state.bounds.length - 1 : 1;
+  list.replaceChildren();
+  state.groups.forEach((grp, i) => {
+    grp.from = Math.min(Math.max(1, grp.from), n);
+    grp.to = Math.min(Math.max(grp.from, grp.to), n);
+    const row = document.createElement("div");
+    row.className = "lane-group";
+    row.innerHTML = `<input type="text" class="group-name" placeholder="Group name">
+      <span>lanes</span> <select class="group-from"></select> <span>to</span> <select class="group-to"></select>
+      <button type="button" class="link group-remove">Remove</button><span class="group-warn"></span>`;
+    const name = row.querySelector(".group-name");
+    name.value = grp.name;
+    name.addEventListener("input", () => { grp.name = name.value; });
+    for (const cls of ["group-from", "group-to"]) {
+      const sel = row.querySelector(`.${cls}`);
+      for (let k = 1; k <= n; k++) sel.add(new Option(String(k), String(k)));
+      sel.value = String(cls === "group-from" ? grp.from : grp.to);
+      sel.addEventListener("change", () => {
+        grp[cls === "group-from" ? "from" : "to"] = parseInt(sel.value, 10);
+        if (grp.from > grp.to) [grp.from, grp.to] = [grp.to, grp.from];
+        drawLaneGroups();
+      });
+    }
+    row.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(i, 1); drawLaneGroups(); });
+    const clash = state.groups.findIndex((o, j) => j !== i && o.from <= grp.to && grp.from <= o.to);
+    row.querySelector(".group-warn").textContent = clash >= 0 ? `Overlaps group ${clash + 1}` : "";
+    list.append(row);
+  });
+}
+
+$("add-group").addEventListener("click", () => {
+  const n = state.bounds ? state.bounds.length - 1 : 1;
+  const from = Math.min(n, state.groups.reduce((m, g) => Math.max(m, g.to), 0) + 1); // after the last group
+  state.groups.push({ name: "", from, to: n });
+  drawLaneGroups();
+});
 
 // ---------- figure ----------
 

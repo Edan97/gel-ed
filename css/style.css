@@ -195,3 +195,10 @@ h3.sub { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
 .lane-note input { flex: 1; }
 .caption-label { display: block; font-weight: 600; margin: 0.9rem 0 0.3rem; }
 #caption { display: block; width: 100%; resize: vertical; margin-bottom: 0.5rem; }
+.lane-groups { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.4rem 0 0.6rem; }
+.lane-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+.lane-group .group-name {
+  font: inherit; color: inherit; background: var(--page);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem; width: 14rem; max-width: 100%;
+}
+.lane-group .group-warn { color: var(--error); }

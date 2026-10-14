@@ -145,13 +145,13 @@ export function drawDividers(ctx, bounds, top, height, px, active = -1) {
 // null). Labels that would overlap the one above get a longer line and sit further out.
 // Drawn at the gel's own resolution; text and lines scale with its height.
 export function renderFigure(canvas, grey, w, h, left, right) {
-  const fs = Math.max(14, Math.round(h / 30));          // size labels
-  const kfs = Math.round(fs * 1.3);                      // "kDa"
-  const lw = 2 * Math.max(1, fs / 10);                   // lines and outline
-  const tick = Math.round(fs * 0.8), gap = Math.round(fs * 0.35), sep = fs * 1.3; // sep: closest labels on one level
+  const base = Math.max(14, Math.round(h / 30));
+  const fs = 2 * base;                                   // size labels and "(kDa)"
+  const lw = 2 * Math.max(1, base / 10);                 // lines and outline
+  const tick = Math.round(base * 1.2), gap = Math.round(fs * 0.25), sep = fs * 1.15; // sep: closest labels on one level
   const ctx = canvas.getContext("2d");
   const font = `${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-  const kfont = `bold ${kfs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+
   // place each side's labels: level 0 next to the gel; a label too close to the one
   // above on its level goes to the next level out (a longer line)
   const layout = (marks) => {
@@ -167,13 +167,12 @@ export function renderFigure(canvas, grey, w, h, left, right) {
     });
     const levels = Math.max(...placed.map((q) => q.level)) + 1;
     const reach = (level) => tick + level * (textW + 2 * gap + tick);
-    ctx.font = kfont;
-    const kw = ctx.measureText("kDa").width;
+    const kw = ctx.measureText("(kDa)").width;
     return { placed, reach, width: Math.ceil(Math.max(reach(levels - 1) + gap + textW, kw) + fs * 0.6) };
   };
   const L = layout(left), R = layout(right);
   const ml = L ? L.width : Math.round(fs * 0.6), mr = R ? R.width : Math.round(fs * 0.6);
-  const mt = Math.round(kfs * 1.7), mb = Math.round(fs * 0.8);
+  const mt = Math.round(fs * 1.5), mb = Math.round(fs * 0.5);
   canvas.width = Math.ceil(w + ml + mr);
   canvas.height = h + mt + mb;
   ctx.fillStyle = "#ffffff";
@@ -193,14 +192,13 @@ export function renderFigure(canvas, grey, w, h, left, right) {
     for (const q of S.placed) {
       const y = mt + q.y, end = x0 + dir * S.reach(q.level);
       ctx.beginPath();
-      ctx.moveTo(x0 - dir * (lw / 2), y);
+      ctx.moveTo(x0, y); // flush with the inside of the outline
       ctx.lineTo(end, y);
       ctx.stroke();
       ctx.fillText(String(q.kda), end + dir * gap, y);
     }
-    ctx.font = kfont;
     ctx.textBaseline = "alphabetic";
-    ctx.fillText("kDa", x0 + dir * (tick + gap), mt - kfs * 0.5);
+    ctx.fillText("(kDa)", x0 + dir * (tick + gap), mt - fs * 0.45);
   };
   side(L, ml, -1);
   side(R, ml + w, 1);

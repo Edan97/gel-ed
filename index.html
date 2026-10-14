@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=225ac426">
-  <script type="module" src="js/app.js?v=225ac426"></script>
+  <link rel="stylesheet" href="css/style.css?v=df452940">
+  <script type="module" src="js/app.js?v=df452940"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="225ac426">version 17</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="df452940">version 18</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -162,6 +162,10 @@
             <p id="summary" class="hint"></p>
             <h3 class="sub">Lane annotations</h3>
             <div id="lane-notes" class="lane-notes"></div>
+            <h3 class="sub">Lane groups</h3>
+            <p class="hint">A group is a continuous run of lanes with a name, e.g. non-reducing / reducing.</p>
+            <div id="lane-groups" class="lane-groups"></div>
+            <button type="button" id="add-group" class="btn">Add group</button>
           </div>
         </div>
       </section>
