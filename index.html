@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=fec24d99">
-  <script type="module" src="js/app.js?v=fec24d99"></script>
+  <link rel="stylesheet" href="css/style.css?v=ebef8f54">
+  <script type="module" src="js/app.js?v=ebef8f54"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="fec24d99">version 39</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="ebef8f54">version 40</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -30,7 +30,6 @@
         <summary>1 · Edit image</summary>
         <div class="panel-grid">
           <div class="controls">
-            <button type="button" id="flip" class="btn" aria-pressed="false">Flip horizontally</button>
             <fieldset>
               <legend>Tone</legend>
               <label class="slider">Brightness <output data-for="brightness"></output>
@@ -51,6 +50,7 @@
             </fieldset>
             <fieldset>
               <legend>Geometry</legend>
+              <button type="button" id="flip" class="btn" aria-pressed="false">Flip horizontally</button>
               <label class="slider">Rotation <output data-for="rotation"></output>
                 <span class="slider-row">
                   <span class="icon" data-icon="rotation" data-end="-1" aria-hidden="true"></span>

@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=fec24d99";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=fec24d99";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=fec24d99";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=fec24d99";
-import { median } from "./signal.js?v=fec24d99";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=fec24d99";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=fec24d99";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=fec24d99";
-import { log, logOnChange, logText } from "./log.js?v=fec24d99";
-import { LADDERS } from "./ladders.js?v=fec24d99";
-import { drawIcons } from "./icons.js?v=fec24d99";
+import { readImage } from "./image.js?v=ebef8f54";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=ebef8f54";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=ebef8f54";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=ebef8f54";
+import { median } from "./signal.js?v=ebef8f54";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=ebef8f54";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=ebef8f54";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=ebef8f54";
+import { log, logOnChange, logText } from "./log.js?v=ebef8f54";
+import { LADDERS } from "./ladders.js?v=ebef8f54";
+import { drawIcons } from "./icons.js?v=ebef8f54";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
