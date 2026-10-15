@@ -14,4 +14,8 @@ export const LADDERS = {
     name: "Novex™ Sharp Pre-stained Protein Standard",
     kda: [260, 160, 110, 80, 60, 50, 40, 30, 20, 15, 10, 3.5],
   },
+  "precision-plus-dual": {
+    name: "Precision Plus Protein™ Dual Color Standards",
+    kda: [250, 150, 100, 75, 50, 37, 25, 20, 15, 10],
+  },
 };
