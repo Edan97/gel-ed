@@ -50,6 +50,10 @@ Usage:
         [--ladder-kda 220 120 100 80 60 50 40 30 20] [--ladder-lane 1] [--ref-lane 2]
         [--ladder-rows R ...] [--no-align] [--row-start 140]
         [--same LO HI [--same LO HI ...] --same-lanes N ...]
+        [--follow centroid|edge] [--tag SUFFIX]
+
+--follow reads each lane's profile from a strip that follows its fitted centre-line
+(compare_lanes.py) instead of the lane's middle columns; --tag is added to output names.
 """
 
 import argparse
@@ -66,10 +70,25 @@ from scipy.stats import chi2
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from band_peaks import find_bands  # noqa: E402
+from compare_lanes import fit_lane  # noqa: E402
 from lanes import read_lanes  # noqa: E402
 from ladder_centreline import extract, load  # noqa: E402
 
 DEFAULT_KDA = [220, 120, 100, 80, 60, 50, 40, 30, 20]
+
+
+def lane_centre(img, start, end, row_start, method):
+    """x(row) in lane columns from compare_lanes.fit_lane ("centroid": through band centroids;
+    "edge": midpoint of fitted band edges), held flat above the first and below the last
+    band used (a polynomial is not trusted beyond its data). None if the lane has no clear
+    bands. Also returns the degree chosen."""
+    try:
+        r = fit_lane(img, start, end, row_start, (row_start, img.shape[0] - 1), None, 1)
+    except ValueError:
+        return None, None
+    f = r["centroid_fit"] if method == "centroid" else r["centre"]
+    lo, hi = r["y_range"]
+    return (lambda y: f(np.clip(y, lo, hi)) - start), r["deg"][method]
 
 
 def match_signal(info):
@@ -282,6 +301,8 @@ def main():
     p.add_argument("--ladder-lane", type=int, default=1, help="ladder lane number (default 1)")
     p.add_argument("--ladder-rows", type=float, nargs="+",
                    help="ladder band rows to use, top first (default: as found)")
+    p.add_argument("--ladder-strongest", action="store_true",
+                   help="if the ladder lane has more bands than sizes, use its most prominent peaks")
     p.add_argument("--ref-lane", type=int, help="lane assumed to have run like the ladder "
                                                 "(default: the lane next to the ladder)")
     p.add_argument("--no-align", action="store_true", help="skip the running correction")
@@ -290,6 +311,8 @@ def main():
     p.add_argument("--same", type=float, nargs=2, metavar=("LO", "HI"), action="append",
                    help="same-protein test: kDa window (repeat for several windows)")
     p.add_argument("--same-lanes", type=int, nargs="+", help="lanes for the same-protein test")
+    p.add_argument("--follow", choices=["centroid", "edge"], help="profiles follow each lane's centre-line")
+    p.add_argument("--tag", default="", help="suffix for output file names")
     a = p.parse_args()
     if bool(a.same) != bool(a.same_lanes):
         p.error("--same and --same-lanes go together")
@@ -298,13 +321,18 @@ def main():
     lanes = sorted(read_lanes(a.lanes), key=lambda l: (l[1] + l[2]) / 2)
     results = {}
     for no, (name, start, end) in enumerate(lanes, 1):
-        bands, info = find_bands(extract(img, start, end), a.row_start)
-        results[no] = {"name": name, "bands": bands, "info": info, "align": None}
+        centre, deg = lane_centre(img, start, end, a.row_start, a.follow) if a.follow else (None, None)
+        bands, info = find_bands(extract(img, start, end), a.row_start, centre=centre)
+        results[no] = {"name": name, "bands": bands, "info": info, "align": None, "centre_deg": deg}
 
     # ladder
     kda = np.array(a.ladder_kda, dtype=float)
     lad_rows = (np.array(a.ladder_rows, dtype=float) if a.ladder_rows else
                 np.array([d["y"] for d in results[a.ladder_lane]["bands"]], dtype=float))
+    if not a.ladder_rows and a.ladder_strongest and len(lad_rows) > len(kda):
+        peaks = sorted((d for d in results[a.ladder_lane]["bands"] if d["kind"] == "peak"),
+                       key=lambda d: -d["height"])[:len(kda)]
+        lad_rows = np.array(sorted(d["y"] for d in peaks), dtype=float)
     if len(lad_rows) != len(kda):
         sys.exit(f"Ladder lane {a.ladder_lane}: found {len(lad_rows)} bands at rows "
                  f"{[int(r) for r in lad_rows]} but {len(kda)} sizes were given.\n"
@@ -365,7 +393,7 @@ def main():
     # calibration error as a function of log10(kDa), for the same-protein figure
     cal_at = lambda lgm: np.interp(lgm, np.log10(kda[1:-1])[::-1], loo_err[::-1])  # noqa: E731
 
-    stem = Path(a.image).stem
+    stem = Path(a.image).stem + a.tag
     out = Path(__file__).parent / "out"
     out.mkdir(exist_ok=True)
     title = Path(a.image).name

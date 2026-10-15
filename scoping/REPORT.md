@@ -119,7 +119,37 @@ Results ([`gel_02_lanes_overlay.png`](out/gel_02_lanes_overlay.png),
 - Bands are sheared, not rotated: the ladder leans right going down but its bands
   slope down to the right (~4°) instead of being square to the lane.
 
-The centre-lines are **not yet used** by band picking or masses (see below).
+The centre-lines are **not used** by band picking or masses: following them was tested
+and doesn't help (next section).
+
+#### Do profiles that follow the centre-line help? (`follow_centreline.py`)
+
+Profiles are read from a straight strip down the middle 25% of each lane. Following
+the fitted centre-line instead (same strip width, `band_masses.py --follow
+centroid|edge`) was compared with the straight strip on gel_02, as is and rotated 3°
+without straightening (`--rotate 3`; lanes carried along, labels whited out):
+
+| | Straight strip | Following centroid fit | Following edge fit |
+|---|---|---|---|
+| **gel_02 as is** (strips move up to 18 px) | | | |
+| Peaks / median SNR / peak height | 83 / 20.5 / ×1 | 82 / 19.4 / ×0.994 | 81 / 19.6 / ×0.993 |
+| Same-protein χ² (105, 109, 74, 64, 52 kDa) | 4.3, 1.1, 1.4, 194, 13 | 3.5, 0.2, 2.5, 99, 13 | 3.5, 0.1, 2.2, 96, 16 |
+| Triplet lane 5 vs 11 | 0.1 kDa apart | 0.1 kDa | 0.1 kDa |
+| **Rotated 3°, not straightened** (strips move up to 57 px) | | | |
+| Peaks / median SNR / peak height | 98 / 25.7 / ×1 | 99 / 22.7 / ×1.012 | 100 / 22.7 / ×0.999 |
+| Same-protein χ² | 0.7, 5.8, 17, 17, 38 | 5.8, 1.7, 8.8, 30, 38 | 1.4, 1.8, 8.7, 15, 42 |
+| Lane 5 triplet (straight gel: 40.0 / 38.7 / 38.1) | 39.5 / 37.5 / 36.3 | 39.8 / 38.5 / 38.0 | 39.7 / 38.5 / 37.9 |
+
+(The 61–67 kDa window holds more than one protein, so its χ² is large whatever the
+strip; the χ² counts are for comparing strips, not proteins.)
+
+- On a straight gel it changes nothing that matters: bands are ~100 px wide and the
+  37 px strip stays on them even where the lane leans 18 px away from it.
+- On a tilted gel it recovers some masses (lane 5's triplet) and makes others worse;
+  peak heights hardly change. Straightening the gel first (the rotation slider) fixes
+  the tilt for every lane at once and is the better route.
+- So the web page keeps the straight strip. "Show profiles" shades it, so a strip that
+  has slid off its bands is visible.
 
 ### Masses (`band_masses.py`)
 
@@ -284,6 +314,7 @@ alignment grid search) takes well under a second per lane.
 | `scoping/band_peaks.py` | Band picking; profile figures |
 | `scoping/band_masses.py` | Masses with running correction |
 | `scoping/compare_lanes.py` | Centre-lines for all lanes, degree by LOO |
+| `scoping/follow_centreline.py` | Straight strip vs following the centre-line: profiles and masses |
 | `scoping/ladder_centreline.py` | Ladder centre-line from band centroids (exploration) |
 | `scoping/ladder_edges.py` | Ladder outline from per-row edges (exploration) |
 | `scoping/column_profiles.py`, `strip_profiles.py` | First-look plots |

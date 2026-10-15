@@ -51,8 +51,12 @@ from ladder_centreline import extract, load  # noqa: E402
 
 
 def find_bands(region, row_start=0, core=0.25, smooth=1.0, noise_rows=61, k=6.0, sep=5,
-               sat_level=0.03, sat_frac=0.2):
+               sat_level=0.03, sat_frac=0.2, centre=None):
     """Bands in one lane region (rows x columns, 0 black - 1 white).
+
+    centre: optional x(row) in region columns (row = image row). The strip of central
+    columns, same width, then follows it row by row (linear interpolation between
+    columns, kept inside the region) instead of sitting in the middle of the lane.
 
     Returns (bands, info). Each band: {"y", "kind": "peak"|"shoulder", "height" (how far
     it rises above its surroundings), "snr" (height / noise), "saturated"}. info holds
@@ -60,7 +64,19 @@ def find_bands(region, row_start=0, core=0.25, smooth=1.0, noise_rows=61, k=6.0,
     """
     n = region.shape[1]
     c0, c1 = int(round(n * (1 - core) / 2)), int(round(n * (1 + core) / 2))
-    centre = region[row_start:, c0:c1]
+    centre_x = None
+    if centre is None:
+        centre = region[row_start:, c0:c1]
+    else:
+        width = c1 - c0
+        rows = np.arange(row_start, region.shape[0])
+        centre_x = np.clip(np.asarray(centre(rows), dtype=float), (width - 1) / 2, n - 1 - (width - 1) / 2)
+        xs = centre_x[:, None] - (width - 1) / 2 + np.arange(width)[None, :]  # sample columns, per row
+        x0 = np.clip(np.floor(xs).astype(int), 0, n - 2)
+        t = xs - x0
+        sub = region[row_start:]
+        r = np.arange(sub.shape[0])[:, None]
+        centre = sub[r, x0] * (1 - t) + sub[r, x0 + 1] * t
     dark = 1 - centre
     prof = ndimage.gaussian_filter1d(dark.mean(axis=1), smooth)
     wobble = prof - ndimage.gaussian_filter1d(prof, noise_rows / 6)  # for the noise estimate only
@@ -91,7 +107,7 @@ def find_bands(region, row_start=0, core=0.25, smooth=1.0, noise_rows=61, k=6.0,
     bands.sort(key=lambda d: d["y"])
     rows = np.arange(row_start, region.shape[0])
     info = {"rows": rows, "profile": prof, "noise": noise,
-            "saturated": rows[saturated], "core_cols": (c0, c1)}
+            "saturated": rows[saturated], "core_cols": (c0, c1), "centre_x": centre_x}
     return bands, info
 
 
