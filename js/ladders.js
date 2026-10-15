@@ -1,5 +1,6 @@
 // Ladders (molecular-weight standards) the page knows about. Sizes in kDa, top of the
-// gel (largest) first. Add entries here; the ladder cards' dropdown lists them in order.
+// gel (largest) first. Add entries here; the ladder cards' dropdown lists them in order,
+// then "Custom" (sizes typed on the card).
 
 export const LADDERS = {
   "magicmark-xp": {
@@ -13,6 +14,10 @@ export const LADDERS = {
   "novex-sharp": {
     name: "Novex™ Sharp Pre-stained Protein Standard",
     kda: [260, 160, 110, 80, 60, 50, 40, 30, 20, 15, 10, 3.5],
+  },
+  "novex-sharp-15": {
+    name: "Novex™ Sharp Pre-stained Protein Standard, 15 to 260 kDa",
+    kda: [260, 160, 110, 80, 60, 50, 40, 30, 20, 15],
   },
   "precision-plus-dual": {
     name: "Precision Plus Protein™ Dual Color Standards",

@@ -234,3 +234,4 @@ label.row.method-row { justify-content: flex-start; gap: 0.6rem; font-size: 0.9r
 .antibody-row .ab-select { max-width: 32rem; }
 .antibody-row .ab-text { width: 26rem; max-width: 100%; }
 .antibody-row [hidden] { display: none; }
+.ladder-custom { flex: 1; min-width: 0; }

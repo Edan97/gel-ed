@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=e9c57584";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=e9c57584";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=e9c57584";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=e9c57584";
-import { median } from "./signal.js?v=e9c57584";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=e9c57584";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=e9c57584";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=e9c57584";
-import { log, logOnChange, logText } from "./log.js?v=e9c57584";
-import { LADDERS } from "./ladders.js?v=e9c57584";
-import { drawIcons } from "./icons.js?v=e9c57584";
+import { readImage } from "./image.js?v=395cf4c2";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=395cf4c2";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=395cf4c2";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=395cf4c2";
+import { median } from "./signal.js?v=395cf4c2";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=395cf4c2";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=395cf4c2";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=395cf4c2";
+import { log, logOnChange, logText } from "./log.js?v=395cf4c2";
+import { LADDERS } from "./ladders.js?v=395cf4c2";
+import { drawIcons } from "./icons.js?v=395cf4c2";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -304,7 +304,7 @@ function assignLadders() {
   const lanes = lanePairs();
   for (const lad of state.ladders) {
     lad.lane = Math.min(Math.max(1, lad.lane), lanes.length);
-    const sizes = LADDERS[lad.type].kda;
+    const sizes = ladderSizes(lad);
     const [s, e] = lanes[lad.lane - 1];
     if (!lad.manual || !lad.markers) {
       const bands = state.results[lad.lane - 1].bands;
@@ -332,6 +332,7 @@ function assignLadders() {
     const est = m.filter((q) => q.estimated).map((q) => q.kda);
     if (est.length) lad.note = `No band found for ${est.join(", ")} kDa: placed by estimate (pale). Drag onto the right band.`;
     if (m.length < sizes.length) lad.note = `Only ${m.length} of ${sizes.length} ladder bands placed.`;
+    if (sizes.length < 2) lad.note = "Type at least two sizes (kDa) for the custom ladder.";
     if (m.some((q, i) => i && (q.kda >= m[i - 1].kda || q.y <= m[i - 1].y))) {
       lad.note = "Ladder bands are out of order: drag them back so sizes fall from top to bottom.";
     } else if (m.length >= 2) {
@@ -345,7 +346,7 @@ function assignLadders() {
     }
   }
   state.ladders.forEach((lad, i) => logOnChange(`ladder-${i + 1}`, {
-    type: lad.type, lane: lad.lane, movedByHand: lad.manual, note: lad.note,
+    type: lad.type, ...(lad.type === "custom" ? { sizes: lad.custom } : {}), lane: lad.lane, movedByHand: lad.manual, note: lad.note,
     bands: lad.markers.map((q) => `${q.y}:${q.kda}${q.estimated ? "(est)" : ""}`),
   }));
   // markers to draw, per lane
@@ -630,7 +631,14 @@ overlayCanvas.addEventListener("pointerup", (e) => {
 
 // ---------- ladders ----------
 
-// One card per ladder on the gel; its dropdown says which ladder it is (LADDERS).
+// A ladder's sizes (kDa, largest first) and name: from LADDERS, or typed for "custom".
+const ladderSizes = (lad) => (lad.type === "custom" ? lad.custom : LADDERS[lad.type].kda);
+const ladderName = (lad) => (lad.type === "custom" ? (lad.custom.length ? `Custom ladder (${lad.custom.join(", ")} kDa)` : "Custom ladder") : LADDERS[lad.type].name);
+// "250, 150 100;75" -> [250, 150, 100, 75]: positive numbers, largest first, no repeats
+const parseSizes = (text) => [...new Set((text.match(/\d+(?:\.\d+)?/g) || []).map(Number).filter((v) => v > 0))]
+  .sort((a, b) => b - a);
+
+// One card per ladder on the gel; its dropdown says which ladder it is (LADDERS, or Custom).
 function drawLadderCards() {
   const list = $("ladder-cards");
   list.replaceChildren();
@@ -639,15 +647,26 @@ function drawLadderCards() {
     card.querySelector(".ladder-title").textContent = `Ladder ${i + 1}`;
     const select = card.querySelector(".ladder-type");
     for (const [key, { name }] of Object.entries(LADDERS)) select.add(new Option(name, key));
+    select.add(new Option("Custom (type the sizes)", "custom"));
     select.value = ladder.type;
-    card.querySelector(".ladder-sizes").textContent = `${LADDERS[ladder.type].kda.join(", ")} kDa`;
+    const sizes = ladderSizes(ladder);
+    card.querySelector(".ladder-sizes").textContent = sizes.length ? `${sizes.join(", ")} kDa` : "";
+    const customRow = card.querySelector(".ladder-custom-row"), custom = card.querySelector(".ladder-custom");
+    customRow.hidden = ladder.type !== "custom";
+    custom.value = ladder.custom.join(", ");
+    custom.addEventListener("change", () => {
+      ladder.custom = parseSizes(custom.value);
+      log("ladder-custom", { ladder: i + 1, sizes: ladder.custom });
+      changed(); drawLadderCards(); drawLadderNotes(); updateCaption();
+    });
     const laneSelect = card.querySelector(".ladder-lane");
     const nLanes = state.bounds ? state.bounds.length - 1 : 1;
     for (let k = 1; k <= nLanes; k++) laneSelect.add(new Option(String(k), String(k)));
     laneSelect.value = String(Math.min(ladder.lane, nLanes));
     card.querySelector(".ladder-note").textContent = ladder.note || "";
     const changed = () => { ladder.manual = false; ladder.markers = null; if (state.results) { assignLadders(); drawResults(); } };
-    select.addEventListener("change", () => { ladder.type = select.value; log("ladder-type", { ladder: i + 1, type: ladder.type }); changed(); drawLadderCards(); });
+    select.addEventListener("change", () => { ladder.type = select.value; log("ladder-type", { ladder: i + 1, type: ladder.type }); changed(); drawLadderCards();
+      if (ladder.type === "custom") $("ladder-cards").children[i].querySelector(".ladder-custom").focus(); });
     laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); log("ladder-lane", { ladder: i + 1, lane: ladder.lane }); changed(); });
     card.querySelector(".ladder-remove").addEventListener("click", () => {
       state.ladders.splice(i, 1);
@@ -657,7 +676,7 @@ function drawLadderCards() {
   });
 }
 
-const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], lane, markers: null, manual: false, note: "" });
+const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], custom: [], lane, markers: null, manual: false, note: "" });
 $("add-ladder").addEventListener("click", () => {
   state.ladders.push(newLadder(state.bounds ? state.bounds.length - 1 : 1)); // a second ladder: often the last lane
   if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
@@ -684,7 +703,7 @@ function drawLadderNotes() {
       <label class="vol">Volume <span class="unit-box"><input type="text" class="ln-vol" inputmode="decimal"><span class="unit">µL</span></span></label>`;
     row.querySelector(".lane-no").textContent = state.ladders.length > 1 ? `Ladder ${i + 1}` : "Ladder";
     const text = row.querySelector(".ln-text"), vol = row.querySelector(".ln-vol");
-    text.value = lad.noteText ?? LADDERS[lad.type].name;
+    text.value = lad.noteText ?? ladderName(lad);
     vol.value = lad.volume ?? "";
     text.addEventListener("input", () => { lad.noteText = text.value; updateCaption(); });
     vol.addEventListener("input", () => { lad.volume = vol.value; updateCaption(); });
@@ -904,7 +923,7 @@ function generateCaption() {
     const lad = state.ladders.find((l) => l.lane === k);
     const label = state.laneIds[k] ?? String(k);
     if (lad) {
-      lines.push(`Lane ${label}: ${(lad.noteText ?? LADDERS[lad.type].name).trim()}${vol(lad.volume)}.`);
+      lines.push(`Lane ${label}: ${(lad.noteText ?? ladderName(lad)).trim()}${vol(lad.volume)}.`);
       continue;
     }
     const text = (state.laneNotes[k] ?? "").trim(), v = vol(state.laneVols[k]);
