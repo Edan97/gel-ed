@@ -31,7 +31,10 @@ Checks (a good estimator recovers exactly what was added, and leaves nothing beh
 gel_02 (labels whited out) as is and with known extra rotation, skew and perspective.
 
 Usage:
-    python scoping/auto_straighten.py IMAGE [--row-start 140]
+    python scoping/auto_straighten.py IMAGE [--row-start 140] [--figure | --masses]
+
+--figure writes before / lanes upright / full panels (as is and rotated 3 degrees) to
+scoping/out/<image>_auto_straighten.png and <image>_rot3_auto_straighten.png.
 """
 
 import argparse
@@ -295,6 +298,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("image")
     p.add_argument("--row-start", type=int, default=140, help="rows above are whited out (labels)")
+    p.add_argument("--figure", action="store_true", help="before/after figures (as is and rotated 3 degrees)")
     p.add_argument("--masses", action="store_true",
                    help="also run the masses pipeline before/after auto-straightening (as is and rotated 3 degrees)")
     a = p.parse_args()
@@ -303,6 +307,14 @@ def main():
     h, w = grey.shape
     cases = [("as is", {}), ("+3 deg rotation", {"rotation": 3}), ("-2 deg rotation", {"rotation": -2}),
              ("+0.03 skew", {"skew": 0.03}), ("+0.2 perspective", {"perspective": 0.2})]
+    if a.figure:
+        out = Path(__file__).parent / "out"
+        out.mkdir(exist_ok=True)
+        stem = Path(a.image).stem
+        print(figure(grey, f"{Path(a.image).name}: auto-straighten", out / f"{stem}_auto_straighten.png"))
+        print(figure(grey, f"{Path(a.image).name} rotated 3 deg: auto-straighten", out / f"{stem}_rot3_auto_straighten.png",
+                     {"rotation": 3}))
+        return
     if a.masses:
         masses_report(grey)
         return
@@ -322,6 +334,55 @@ def main():
                 print(f"  {'':<18} vs as-is: {fmt(diff)}  (should undo {extra})")
             print(f"  {'':<18} left after: lean {np.degrees(np.arctan(Lb0)):+.2f} deg, band slope "
                   f"{np.degrees(np.arctan(B)):+.2f} deg, fanning {Lb1 * w:+.4f} across the gel")
+
+
+def centre_lines(grey):
+    """[(rows, xs)] straight centre-line of each lane with 3+ clear bands, over its bands' rows."""
+    filled = np.where(np.isnan(grey), 1.0, grey)
+    _, bounds = count_lanes(filled)
+    img16 = (filled * 65535).astype(np.uint16)
+    lines = []
+    for s, e in zip(bounds[:-1], bounds[1:]):
+        try:
+            r = fit_lane(img16, s, e - 1, 0, (0, grey.shape[0] - 1), 1, 1)
+        except (ValueError, np.linalg.LinAlgError):
+            continue
+        if len(r["bands"]) >= 3:
+            ys = np.linspace(*r["y_range"], 50)
+            lines.append((ys, r["centroid_fit"](ys)))
+    return lines
+
+
+def figure(grey, title, out_path, extra=None):
+    """Before / lanes upright / full auto-straighten, side by side, with each lane's fitted
+    centre-line (red) and straight guides (blue) to show what's tilted."""
+    import matplotlib.pyplot as plt
+    h, w = grey.shape
+    img = warp(grey, matrix(w, h, **extra)) if extra else grey
+    panels = [("before", img, None)]
+    for v, label in (("lanes", "lanes upright (skew + perspective)"), ("full", "full (rotation + skew + distort)")):
+        fix, _ = auto_straighten(img, variant=v)
+        panels.append((label, warp(img, matrix(img.shape[1], img.shape[0], **fix)), fix))
+    fig, axes = plt.subplots(len(panels), 1, figsize=(13, 5.2 * len(panels)))
+    for ax, (label, im, fix) in zip(axes, panels):
+        g = np.where(np.isnan(im), 1.0, im)
+        ax.imshow(g, cmap="gray", vmin=np.percentile(g, 1), vmax=np.percentile(g, 99.5), aspect="equal")
+        H, W = g.shape
+        for x in np.linspace(0, W - 1, 15)[1:-1]:
+            ax.axvline(x, color="#2a78d6", lw=0.5, alpha=0.6)
+        for y in np.linspace(0, H - 1, 8)[1:-1]:
+            ax.axhline(y, color="#2a78d6", lw=0.5, alpha=0.6)
+        for ys, xs in centre_lines(im):
+            ax.plot(xs, ys, color="#d62a2a", lw=1.4)
+        L0, L1, B = measure(im, "B")
+        ax.set_title(f"{label}" + (f": {fmt(fix)}" if fix else "") +
+                     f"\nlanes lean {np.degrees(np.arctan(L0)):+.2f} deg, bands slope "
+                     f"{np.degrees(np.arctan(B)):+.2f} deg", fontsize=10)
+        ax.set_xticks([]); ax.set_yticks([])
+    fig.suptitle(title + " (red: each lane's fitted centre-line; blue: straight guides)", fontsize=12)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=100)
+    return out_path
 
 
 def masses_report(grey):
