@@ -49,7 +49,8 @@ behind it.
    masses;
    **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
-   shoulders marked. Profiles are read from the **edited image** by default; *original
+   shoulders marked, over the shaded columns it's read from (the lane's middle, set by
+   "Centre of lane used"; band rows from there give the masses). Profiles are read from the **edited image** by default; *original
    pixels* places each pixel of the loaded image through the edits and counts it once,
    never blended. The edit settings are written into every row of the bands CSV.
    **Ladders**: one card per ladder on the gel (add or remove cards); each card says

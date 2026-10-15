@@ -31,7 +31,9 @@ export function greyToImageData(ctx, grey, w, h) {
 // Otherwise only marked bands: ladder bands filled and labelled with their size (marks:
 // per lane [{x, y, kda, ladder, i}]) and the bands the user clicked (picks: per lane
 // [{x, y, name}]) hollow and labelled with their name. drag: a ladder marker being moved.
-export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, marks = null, drag = null, picks = null) {
+// strips: per lane [c0, c1), the columns its profile is read from (shaded with profiles).
+export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, marks = null, drag = null, picks = null,
+                            strips = null) {
   ctx.save();
   ctx.lineJoin = "round";
   lanes.forEach(([start, end], li) => {
@@ -61,6 +63,16 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
         label(ctx, String(q.kda), x + 7 * px, y, px, COLOURS.peak);
       }
       return;
+    }
+    if (strips && strips[li]) { // the columns this profile is read from
+      const [c0, c1] = strips[li], height = ctx.canvas.height - top;
+      ctx.fillStyle = "rgba(42, 120, 214, 0.13)";
+      ctx.fillRect(c0, top, c1 - c0, height);
+      ctx.strokeStyle = "rgba(42, 120, 214, 0.5)";
+      ctx.lineWidth = 1 * px;
+      ctx.beginPath();
+      for (const c of [c0, c1]) { ctx.moveTo(c, top); ctx.lineTo(c, top + height); }
+      ctx.stroke();
     }
     const { bands, profile, noise } = results[li];
     let min = Infinity, max = -Infinity;

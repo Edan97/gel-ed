@@ -173,6 +173,7 @@ canvas.gel { display: block; width: 100%; height: auto; margin: 0 auto; border-r
 .key { display: inline-block; vertical-align: middle; margin: 0 0.3rem 0 0.6rem; }
 .key:first-child { margin-left: 0; }
 .key.profile { width: 18px; height: 2px; background: #2a78d6; }
+.key.strip { width: 10px; height: 12px; background: rgba(42, 120, 214, 0.13); border: solid rgba(42, 120, 214, 0.5); border-width: 0 1px; }
 .key.peak, .key.sat { width: 10px; height: 10px; border: 2px solid #d62a2a; border-radius: 50%; }
 .key.sat { border-color: #000; }
 .key.ladder { width: 10px; height: 10px; border-radius: 50%; background: #d62a2a; }

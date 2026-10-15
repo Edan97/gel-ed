@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=c2cf0cc8";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=c2cf0cc8";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=c2cf0cc8";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=c2cf0cc8";
-import { median } from "./signal.js?v=c2cf0cc8";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=c2cf0cc8";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=c2cf0cc8";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=c2cf0cc8";
-import { log, logOnChange, logText } from "./log.js?v=c2cf0cc8";
-import { LADDERS } from "./ladders.js?v=c2cf0cc8";
-import { drawIcons } from "./icons.js?v=c2cf0cc8";
+import { readImage } from "./image.js?v=45e73d21";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=45e73d21";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=45e73d21";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=45e73d21";
+import { median } from "./signal.js?v=45e73d21";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=45e73d21";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=45e73d21";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=45e73d21";
+import { log, logOnChange, logText } from "./log.js?v=45e73d21";
+import { LADDERS } from "./ladders.js?v=45e73d21";
+import { drawIcons } from "./icons.js?v=45e73d21";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
@@ -570,7 +570,7 @@ function drawResults(active = -1) {
   ctx.putImageData(greyToImageData(ctx, grey, w, h), 0, top);
   drawDividers(ctx, state.bounds, top, h, px, active);
   drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true",
-              state.marks, markDrag, state.pickMarks);
+              state.marks, markDrag, state.pickMarks, lanePairs().map(([s, e]) => coreColumns(s, e, value("core"))));
   const sp = spaces();
   drawDeadSpace(ctx, [...state.dead].map((i) => sp[i]).filter(Boolean), top, h, px,
                 stripHover === null || !sp[stripHover] ? null
