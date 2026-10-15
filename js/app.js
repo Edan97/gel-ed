@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=77e574dc";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=77e574dc";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=77e574dc";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=77e574dc";
-import { median } from "./signal.js?v=77e574dc";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=77e574dc";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=77e574dc";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=77e574dc";
-import { log, logOnChange, logText } from "./log.js?v=77e574dc";
-import { LADDERS } from "./ladders.js?v=77e574dc";
-import { drawIcons } from "./icons.js?v=77e574dc";
+import { readImage } from "./image.js?v=fec24d99";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=fec24d99";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=fec24d99";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=fec24d99";
+import { median } from "./signal.js?v=fec24d99";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=fec24d99";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=fec24d99";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=fec24d99";
+import { log, logOnChange, logText } from "./log.js?v=fec24d99";
+import { LADDERS } from "./ladders.js?v=fec24d99";
+import { drawIcons } from "./icons.js?v=fec24d99";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
@@ -785,7 +785,9 @@ drawLadderCards();
 // Ladder box: one row per ladder, its text pre-filled with the selected ladder (kept
 // once edited) and a volume box (left empty).
 // true while the user is typing in a text box inside el (don't rebuild under them)
-const typingIn = (el) => el.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+const typingIn = (el) => el.contains(document.activeElement) && ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
+// a text box that grows a line at a time as lines are added (Enter)
+const grow = (el) => { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; };
 
 function drawLadderNotes() {
   const box = $("ladder-notes");
@@ -841,7 +843,7 @@ function drawAnnotations(force = false) {
   head.append(addTh);
   const rows = lanes.map((k) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><input type="text" class="lane-id"></td>
+    tr.innerHTML = `<td><textarea class="lane-id" rows="1" spellcheck="false" title="Enter starts a new line"></textarea></td>
       <td><input type="text" class="lane-text" placeholder="Sample, treatment, …"></td>
       <td><span class="unit-box"><input type="text" class="lane-vol" inputmode="decimal"><span class="unit">µL</span></span></td>`;
     const note = tr.querySelector(".lane-text"), vol = tr.querySelector(".lane-vol");
@@ -851,7 +853,7 @@ function drawAnnotations(force = false) {
     vol.addEventListener("input", () => { state.laneVols[k] = vol.value; updateCaption(); });
     const id = tr.querySelector(".lane-id");
     id.value = state.laneIds[k] ?? String(k);
-    id.addEventListener("input", () => { state.laneIds[k] = id.value; drawFigure(); updateCaption(); });
+    id.addEventListener("input", () => { grow(id); state.laneIds[k] = id.value; drawFigure(); updateCaption(); });
     state.groups.forEach((g, gi) => {
       const td = document.createElement("td");
       td.className = "group-cell";
@@ -866,6 +868,7 @@ function drawAnnotations(force = false) {
     return tr;
   });
   table.replaceChildren(head, ...rows);
+  table.querySelectorAll("textarea.lane-id").forEach(grow);
   paintGroups();
 }
 
@@ -873,7 +876,7 @@ function drawAnnotations(force = false) {
 // one line per lane; tab-separated columns (e.g. copied from a spreadsheet) fill across
 // Lane label → Annotation → Volume from the column pasted into. One line pastes normally.
 $("annot").addEventListener("paste", (e) => {
-  const input = e.target.closest("input");
+  const input = e.target.closest("input, textarea");
   const cols = ["lane-id", "lane-text", "lane-vol"];
   const col = input ? cols.findIndex((c) => input.classList.contains(c)) : -1;
   const text = (e.clipboardData || window.clipboardData)?.getData("text") ?? "";
@@ -1018,9 +1021,13 @@ function generateCaption() {
   const n = lanePairs().length;
   const vol = (v) => (v && v.trim() ? ` (${v.trim().replace(/\s*(µ|u)l$/i, "")} µL)` : "");
   const lines = [];
+  // lane labels on one line; if two lanes share a label, every lane is named by number too
+  const labelOf = (k) => (state.laneIds[k] ?? String(k)).replace(/\s*\n\s*/g, " ").trim() || String(k);
+  const all = Array.from({ length: n }, (_, i) => labelOf(i + 1));
+  const repeated = all.some((t, i) => all.indexOf(t) !== i);
   for (let k = 1; k <= n; k++) {
     const lad = state.ladders.find((l) => l.lane === k);
-    const label = state.laneIds[k] ?? String(k);
+    const label = repeated && labelOf(k) !== String(k) ? `${k} (${labelOf(k)})` : labelOf(k);
     if (lad) {
       lines.push(`Lane ${label}: ${(lad.noteText ?? ladderName(lad)).trim()}${vol(lad.volume)}.`);
       continue;

@@ -213,7 +213,8 @@ table.annot .lane-text { width: 18rem; }
 }
 .caption-label { display: block; font-weight: 600; margin: 0.9rem 0 0.3rem; }
 #caption { display: block; width: 100%; resize: vertical; margin-bottom: 0.5rem; }
-table.annot .lane-id { width: 3.5rem; }
+table.annot .lane-id { width: 5.5rem; resize: none; overflow: hidden; display: block; line-height: 1.3; font: inherit; color: inherit;
+  background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem; }
 .fig-show { font-size: 0.9rem; color: var(--text-secondary); margin: 0.4rem 0; display: flex; gap: 0.9rem; flex-wrap: wrap; }
 .fig-show label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-primary); }
 details.sub-details { margin-top: 0.9rem; }

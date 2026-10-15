@@ -76,7 +76,8 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
    western blot with one or more antibodies (chosen from `js/antibodies.js` or typed in).
    **Ladder** (under the overlay): the selected ladder's name (editable) and its
    volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
-   with the lane number, used on the figure), an annotation and a volume (µL), and one
+   with the lane number, used on the figure; Enter starts a new line, e.g. genotype over
+   dilution), an annotation and a volume (µL), and one
    column per **group** (e.g. non-reducing / reducing): name it at the top, then click
    a lane's cell and drag to cover a continuous run of lanes. Pasting several lines
    into a lane box fills that lane and the ones below (tab-separated columns from a
@@ -90,11 +91,13 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
    Lanes that match poorly are flagged "?". Ladder sizes with no band found are placed by estimate
    (pale) so they can be dragged onto the right band.
 4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
-   (the leftmost ladder on the left, a second ladder on the right); sizes that would
-   overlap get a longer line and sit further out. Above the gel: lane labels and group
+   (the leftmost ladder on the left, a second ladder on the right); size labels shrink
+   (to 65%) so close ladder bands' labels fit side by side, and only then get a longer
+   line further out. Lane labels shrink (to 60%) to fit over their lanes. Above the gel: lane labels and group
    bars with names (groups that don't overlap share a row); each can be switched off. Download as PNG
    or copy to the clipboard. The **figure caption** underneath is written from the
-   method, the ladder and lane annotations (label, annotation and volume where filled in) and the
+   method, the ladder and lane annotations (label, annotation and volume where filled in; if two
+   lanes share a label, lanes are also named by number) and the
    groups; it follows them until edited (Regenerate starts again) and can be copied.
 
 **Session log** (Download box): a timestamped record of what the page and the user

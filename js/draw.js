@@ -187,7 +187,14 @@ export function drawDividers(ctx, bounds, top, height, px, active = -1) {
 // Drawn at the gel's own resolution; text and lines scale with its height.
 export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const base = Math.max(14, Math.round(h / 30));
-  const fs = Math.round(1.6 * base);                     // size labels and "MW (kDa)"
+  const fs0 = Math.round(1.3 * base);                    // full size for size labels and "MW (kDa)"
+  // size labels shrink (to 65% at most) so the closest two ladder bands' labels fit side
+  // by side; only if that isn't enough does a label move out onto a longer line
+  const gaps = [left, right].filter(Boolean).flatMap((m) => {
+    const ys = m.map((q) => q.y).sort((a, b) => a - b);
+    return ys.slice(1).map((y, i) => y - ys[i]);
+  });
+  const fs = gaps.length ? Math.max(Math.round(0.65 * fs0), Math.min(fs0, Math.floor(Math.min(...gaps) / 1.15))) : fs0;
   const lw = 2 * Math.max(1, base / 10);                 // lines and outline
   const tick = Math.round(base * 1.2), gap = Math.round(fs * 0.25), sep = fs * 1.15; // sep: closest labels on one level
   const ctx = canvas.getContext("2d");
@@ -215,11 +222,19 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const ml = L ? L.width : Math.round(fs * 0.6);
   let mr = R ? R.width : Math.round(fs * 0.6);
   // rows above the gel, bottom (next to the gel) to top
-  const afs = Math.round(fs * 0.8), afont = `${afs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const afs = Math.round(fs0 * 0.8), afont = `${afs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
   const show = (top && top.show) || {};
   const lanes = (top && top.lanes) || [], groups = (top && top.groups) || [];
+  // lane labels: one or more lines (typed with Enter), shrunk (to 60% at most) so the
+  // widest line fits over its lane
+  const idLines = lanes.map((l) => (l.id ? String(l.id).split("\n").map((t) => t.trim()) : []));
   ctx.font = afont;
-  const ids = show.ids && lanes.some((l) => l.id) ? Math.round(afs * 1.4) : 0;
+  const tooWide = Math.max(1, ...lanes.map((l, i) =>
+    Math.max(0, ...idLines[i].map((t) => ctx.measureText(t).width)) / Math.max(1, (l.x1 - l.x0) * 0.92)));
+  const ifs = Math.max(Math.round(0.6 * afs), Math.floor(afs / tooWide));
+  const idFont = `${ifs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const nLines = Math.max(0, ...idLines.map((ls) => ls.length));
+  const ids = show.ids && nLines ? Math.round(ifs * (1.15 * nLines + 0.25)) : 0;
   const notes = show.notes ? lanes.filter((l) => l.text) : [];
   const tilt = notes.some((l) => ctx.measureText(l.text).width > (l.x1 - l.x0) * 0.92);
   const notesH = !notes.length ? 0
@@ -266,9 +281,12 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   ctx.fillStyle = ctx.strokeStyle = "#000000";
   let yb = mt - Math.round(afs * 0.4); // bottom of the next row up
   if (ids) {
+    ctx.font = idFont;
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    for (const l of lanes) if (l.id) ctx.fillText(l.id, ml + (l.x0 + l.x1) / 2, yb);
+    lanes.forEach((l, i) => idLines[i].forEach((t, j) => // last line just above the gel
+      ctx.fillText(t, ml + (l.x0 + l.x1) / 2, yb - (idLines[i].length - 1 - j) * Math.round(ifs * 1.15))));
+    ctx.font = afont;
     yb -= ids;
   }
   if (notesH) {
