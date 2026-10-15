@@ -7,8 +7,11 @@
    doesn't: on a gel with most lanes empty it is mostly background).
 2. An evenly spaced comb is fitted to that profile: for each lane width p and offset,
    the score is the sum over lanes of (content across the lane's middle 40%) minus
-   (content at its dividers, +-5% of p). Empty lanes score about nothing, so a gel with
-   only a few loaded lanes still gets the right width.
+   (content at its darker divider, +-5% of p). Empty lanes score about nothing, so a gel
+   with only a few loaded lanes still gets the right width. The darker divider, not the
+   mean of the two: with flat-topped lanes (a well straightened gel) the mean ties half
+   the lane width with the true one, as each half-lane's dividers average a gap and the
+   lane's own middle; against the darker one a divider on a band cancels the lane.
 3. Each divider moves to the palest column within +-15% of p; empty lanes at the edges
    are margin; a remaining edge piece narrower than half a lane joins its neighbour.
 
@@ -77,7 +80,7 @@ def count_lanes(grey):
                 ds = [v for v in ds if not np.isnan(v)]
                 if np.isnan(L) or not ds:
                     continue
-                score += L - sum(ds) / len(ds)
+                score += L - max(ds)
             if score > best[0]:
                 best = (score, p, x0)
             x0 += dx

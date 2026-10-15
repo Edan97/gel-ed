@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=2b1ce8fb";
+import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=77e574dc";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -205,7 +205,8 @@ function columnContent(img, w, h) {
 
 // How many lanes, and where? Fits an evenly spaced comb to the column band content:
 // for each lane width p and offset, the score is the sum over lanes of (content across
-// the lane's middle 40%) minus (content at its dividers, +-5% of p). Loaded lanes score
+// the lane's middle 40%) minus (content at its darker divider, +-5% of p; with the mean of
+// the two, flat-topped lanes on a well straightened gel tie with half their width). Loaded lanes score
 // when the dividers fall in the gaps beside them; empty lanes score about nothing, so
 // they don't pull the fit (a gel with only a few loaded lanes still gets the right
 // width), and halving or doubling the width puts dividers on bands. Lane widths from
@@ -239,7 +240,7 @@ export function countLanes(img, w, h) {
         const ds = [c - p / 2, c + p / 2].filter((b) => b >= 0 && b < w)
           .map((b) => mean(b - 0.05 * p, b + 0.05 * p)).filter((v) => !Number.isNaN(v));
         if (Number.isNaN(L) || !ds.length) continue;
-        score += L - ds.reduce((t, v) => t + v, 0) / ds.length;
+        score += L - Math.max(...ds);
       }
       if (score > best.score) best = { score, p, x0 };
     }

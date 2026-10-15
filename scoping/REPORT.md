@@ -151,6 +151,44 @@ strip; the χ² counts are for comparing strips, not proteins.)
 - So the web page keeps the straight strip. "Show profiles" shades it, so a strip that
   has slid off its bands is visible.
 
+#### Auto-straighten from the centre-lines? (`auto_straighten.py`)
+
+Measure the tilt and set the editor's sliders. Lane lean (and how it changes across
+the gel) comes from straight centre-lines through each lane's band centroids; band
+slope from matching the row profiles of neighbouring narrow strips inside lanes.
+Measuring the lean without lanes (top half vs bottom half of the gel) was tried first
+and failed: it read 7 degrees on gel_02, as the halves hold different bands. Lanes
+are vertical strips, so a leaning lane's bands run off its strip and the lean is
+under-read when large; measuring, correcting and re-measuring until a round changes
+less than 0.05 degrees (3-6 rounds) removes that.
+
+Accuracy, by adding known changes to gel_02 (labels whited out): +3 deg rotation
+recovered as -2.85, -2 deg as +1.86, +0.2 perspective as -0.198; what's left after
+correction is under 0.11 deg of lean and 0.03 deg of band slope.
+
+But straightening doesn't make masses better (whole pipeline, lanes found
+automatically; `--masses`):
+
+| gel_02 | Lane 5 / 11 triplets | Same-protein chi2 (105, 109, 74, 64, 52 kDa) |
+|---|---|---|
+| as is | agree within 0.1 kDa | 8.6, 0.5, 18, 18, 26 |
+| lanes upright (skew + perspective; rows untouched) | agree within 0.1 kDa | 4.8, 0.9, 15, 17, 50 |
+| full (rotation + skew + distort + perspective) | 3 kDa apart | 33, 0.9, 12, 38, 31 |
+| lean taken out by rotation | 3 kDa apart | 57, 6.4, 22, 24, 53 |
+
+gel_02's lanes lean (~2.4 deg) but its rows are true; rotating or distorting moves rows,
+and the running correction then pairs lanes with stretch 1.00 and growing shifts
+instead of the real small differences in running. Lean alone can't tell a gel that
+ran crooked from a photo taken crooked, so rotation can't be set from the lanes;
+something known to be horizontal (the line of wells, the gel's edge) would be needed.
+On gel_02 rotated 3 deg, none of the three gets back to the original masses ("full" is
+closest). Making lanes upright with skew and perspective is safe for masses.
+
+Found on the way: a well-straightened gel has flat-topped lanes, and the lane counter
+then tied the true lane width with half of it (25 lanes on gel_02). Fixed by scoring
+each lane against its darker divider (count_lanes.py, js/bands.js); checked in run_all
+and tests/lanes.html.
+
 ### Masses (`band_masses.py`)
 
 1. **Ladder**: lane 1's 9 bands matched in order to 220, 120, 100, 80, 60, 50, 40,
@@ -315,6 +353,7 @@ alignment grid search) takes well under a second per lane.
 | `scoping/band_masses.py` | Masses with running correction |
 | `scoping/compare_lanes.py` | Centre-lines for all lanes, degree by LOO |
 | `scoping/follow_centreline.py` | Straight strip vs following the centre-line: profiles and masses |
+| `scoping/auto_straighten.py` | Measure tilt and set the editor's sliders; accuracy and masses checks |
 | `scoping/ladder_centreline.py` | Ladder centre-line from band centroids (exploration) |
 | `scoping/ladder_edges.py` | Ladder outline from per-row edges (exploration) |
 | `scoping/column_profiles.py`, `strip_profiles.py` | First-look plots |

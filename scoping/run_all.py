@@ -54,6 +54,7 @@ STEPS = [
     ("Profiles along the centre-line vs straight (gel_02 as is, and rotated 3 degrees)",
      ["scoping/follow_centreline.py", GEL02, "--lanes", LANES02]),
     ("", ["scoping/follow_centreline.py", GEL02, "--lanes", LANES02, "--rotate", "3"]),
+    ("Auto-straighten: recovering known tilts on gel_02", ["scoping/auto_straighten.py", GEL02]),
     ("Lane counting (as the web page)",
      ["scoping/count_lanes.py", GEL02, "--lanes", LANES02, "--out", OUT / "gel_02_count_lanes.csv"]),
     ("Reference for the browser tests (open tests/parity.html and tests/straighten.html)",
@@ -111,6 +112,15 @@ def checks():
     ok = len(same) == 2 and {"4", "10"} <= both[0] and {"4", "10"} <= both[1]
     out.append(("Same-protein: lanes 4 and 10 each hold both the ~105 and ~109 kDa band (no alignment needed)",
                 ok, "; ".join(f"{t['mean_kDa']} kDa: lanes {t['lanes']}" for t in same)))
+
+    sys.path.insert(0, str(SCOPING))
+    from auto_straighten import matrix, warp
+    from count_lanes import count_lanes
+    g = load(GEL02).astype(float) / 65535
+    upright = warp(g, matrix(g.shape[1], g.shape[0], skew=-0.044))  # lanes made vertical, rows untouched
+    _, b = count_lanes(np.where(np.isnan(upright), 1.0, upright))
+    out.append(("Lane counting: gel_02 with its lanes made vertical still has 13 lanes (not half-width ones)",
+                len(b) - 1 == 13, f"{len(b) - 1} lanes"))
 
     counted = read_csv(OUT / "gel_02_count_lanes.csv")
     worst = float(counted[0]["worst_divider_px"] or "inf")

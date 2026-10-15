@@ -19,15 +19,19 @@
   <p id="result">Running…</p>
   <table id="table"></table>
   <script type="module">
-    import { readImage } from "../js/image.js?v=2b1ce8fb";
-    import * as T from "../js/transform.js?v=2b1ce8fb";
-    import { countLanes } from "../js/bands.js?v=2b1ce8fb";
+    import { readImage } from "../js/image.js?v=77e574dc";
+    import * as T from "../js/transform.js?v=77e574dc";
+    import { countLanes } from "../js/bands.js?v=77e574dc";
 
     const get = async (u) => {
       const r = await fetch(u);
       if (!r.ok) throw new Error(`${u}: ${r.status} (run scoping/run_all.py first)`);
       const b = await r.blob();
       return readImage(new File([b], u, { type: b.type }));
+    };
+    const sheared = (img, skew) => {
+      const m = T.matrix(img.w, img.h, { skew }), box = T.frame(img.w, img.h, m);
+      return [T.warp(img.grey, img.w, img.h, m, box), box.W, box.H];
     };
     const straightened = (img, rotation) => {
       const m = T.matrix(img.w, img.h, { rotation }), box = T.frame(img.w, img.h, m);
@@ -45,6 +49,7 @@
         ["gel_02, below the labels", [A.grey.slice(140 * A.w), A.w, A.h - 140], 13, truth02],
         ["gel_02, whole image", [A.grey, A.w, A.h], 13, truth02],
         ["gel_03 (most lanes empty)", [G3.grey, G3.w, G3.h], 9],
+        ["gel_02 with its lanes made vertical (skew -0.044)", sheared(A, -0.044), 13],
         ["gel_02 rotated 3°, straightened by 3°", straightened(R, 3), 13],
         ["gel_02 rotated 3°, not straightened", [R.grey, R.w, R.h], null],
         ["first sample (210826…tif), whole image", [G1.grey, G1.w, G1.h], null],
