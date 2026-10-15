@@ -43,7 +43,8 @@ behind it.
    pixels* places each pixel of the loaded image through the edits and counts it once,
    never blended. The edit settings are written into every row of the bands CSV.
    **Ladders**: one card per ladder on the gel (add or remove cards); each card says
-   which ladder it is (from `js/ladders.js`, or Custom: type the sizes in kDa)
+   which ladder it is (from `js/ladders.js`, or Custom), its sizes in kDa (pre-filled
+   from the ladder, editable: delete sizes that ran off; Custom starts empty)
    and which lane it's in. The ladder's bands are picked
    automatically: as many as the ladder has sizes, keeping the most solid bands (a
    smudge or a band with a bright spot is less solid). They're shown as filled circles
