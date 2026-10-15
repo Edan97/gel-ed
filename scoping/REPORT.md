@@ -45,6 +45,13 @@ matplotlib). It was checked from a fresh virtual environment.
 
 Lanes are numbered 1–13 left to right; lane 1 is the ladder.
 
+**gel_02's ladder is uncertain.** The analysis reads it as MagicMark XP (220…20 kDa),
+but the blot looks like an earlier export of the same experiment as Inna Navarro's
+25/09/26 frozen-blood blot, whose ladder is Precision Plus Dual Color (there the
+triplet is ~24 kDa, not ~40), and part of gel_02 may have run off the gel. So gel_02's
+absolute masses shouldn't be trusted. Comparisons between its lanes (triplets agreeing,
+same-protein tests, lane finding, profiles) don't depend on which ladder it is.
+
 ## Pipeline as it stands
 
 ```
@@ -192,7 +199,7 @@ and tests/lanes.html.
 ### Masses (`band_masses.py`)
 
 1. **Ladder**: lane 1's 9 bands matched in order to 220, 120, 100, 80, 60, 50, 40,
-   30, 20 kDa. A faint mark at row ~792 is assumed not to be a ladder band.
+   30, 20 kDa (an assumption; see Samples). A faint mark at row ~792 is assumed not to be a ladder band.
 2. **Calibration**: log₁₀(kDa) vs row, point-to-point (PCHIP). No extrapolation;
    bands outside the ladder are reported as ">220" / "<20".
 3. **Running correction**: with one ladder, each lane's rows are mapped onto lane 2
