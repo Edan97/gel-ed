@@ -161,6 +161,7 @@ canvas.gel { display: block; width: 100%; height: auto; margin: 0 auto; border-r
    when rotated or skewed) is scaled down to fit inside it, never cut off. */
 .stage {
   aspect-ratio: var(--ar, 2 / 1);
+  margin: 0 auto;
   display: flex; align-items: center; justify-content: center;
   background: var(--page); border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
 }

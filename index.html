@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=7616c86b">
-  <script type="module" src="js/app.js?v=7616c86b"></script>
+  <link rel="stylesheet" href="css/style.css?v=c2cf0cc8">
+  <script type="module" src="js/app.js?v=c2cf0cc8"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="7616c86b">version 34</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="c2cf0cc8">version 35</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -53,27 +53,28 @@
               <label class="slider">Rotation <output data-for="rotation"></output>
                 <span class="slider-row">
                   <span class="icon" data-icon="rotation" data-end="-1" aria-hidden="true"></span>
-                  <input type="range" class="centred" id="rotation" min="-15" max="15" step="0.1" value="0">
+                  <input type="range" class="centred" id="rotation" min="-5" max="5" step="0.05" value="0">
                   <span class="icon" data-icon="rotation" data-end="1" aria-hidden="true"></span>
+                </span></label>
+              <label class="slider">Perspective <output data-for="perspective"></output>
+                <span class="slider-row">
+                  <span class="icon" data-icon="perspective" data-end="-1" aria-hidden="true"></span>
+                  <input type="range" class="centred" id="perspective" min="-0.35" max="0.35" step="0.005" value="0">
+                  <span class="icon" data-icon="perspective" data-end="1" aria-hidden="true"></span>
                 </span></label>
               <label class="slider">Skew <output data-for="skew"></output>
                 <span class="slider-row">
                   <span class="icon" data-icon="skew" data-end="-1" aria-hidden="true"></span>
-                  <input type="range" class="centred" id="skew" min="-0.2" max="0.2" step="0.002" value="0">
+                  <input type="range" class="centred" id="skew" min="-0.07" max="0.07" step="0.001" value="0">
                   <span class="icon" data-icon="skew" data-end="1" aria-hidden="true"></span>
                 </span></label>
               <label class="slider">Distort <output data-for="distort"></output>
                 <span class="slider-row">
                   <span class="icon" data-icon="distort" data-end="-1" aria-hidden="true"></span>
-                  <input type="range" class="centred" id="distort" min="-0.2" max="0.2" step="0.002" value="0">
+                  <input type="range" class="centred" id="distort" min="-0.07" max="0.07" step="0.001" value="0">
                   <span class="icon" data-icon="distort" data-end="1" aria-hidden="true"></span>
                 </span></label>
-              <label class="slider">Perspective <output data-for="perspective"></output>
-                <span class="slider-row">
-                  <span class="icon" data-icon="perspective" data-end="-1" aria-hidden="true"></span>
-                  <input type="range" class="centred" id="perspective" min="-1" max="1" step="0.01" value="0">
-                  <span class="icon" data-icon="perspective" data-end="1" aria-hidden="true"></span>
-                </span></label>
+              <button type="button" id="flip" class="btn" aria-pressed="false">Flip horizontally</button>
               <p class="hint">The pictures show what each end of a slider does to the image (dashed: before).
                 Double-click a slider to reset it.</p>
             </fieldset>

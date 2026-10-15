@@ -13,12 +13,16 @@ behind it.
    - Brightness and contrast.
    - Invert. Band finding expects dark bands on a light background, so invert
      white-on-black images before reading the results.
-   - Rotation, skew, distort and perspective sliders, each starting in the middle (no
-     change). A small picture at each end of every slider shows what that end does.
-     Skew slides rows sideways (straightens leaning lanes); distort slides columns up and
-     down (levels bands that slope across the gel); perspective narrows the top or
-     bottom. Double-click a slider to reset it.
-   - The whole edited image always stays in view, scaled to fit the display box.
+   - Rotation, perspective, skew and distort sliders, each starting in the middle (no
+     change) and covering small corrections (rotation +-5 degrees). A small picture at
+     each end of every slider shows what that end does (exaggerated).
+     Perspective narrows the top or bottom; skew slides rows sideways (straightens
+     leaning lanes); distort slides columns up and down (levels bands that slope across
+     the gel). Double-click a slider to reset it.
+   - Flip horizontally: mirrors the gel left-right (before the other edits). Lanes are
+     found again; ladders, lane labels, annotations and groups move to the mirrored lane.
+   - The whole edited image always stays in view, scaled to fit the display box, which
+     is no taller than most of the window (as is the lanes-and-bands view).
    - The whole image is analysed; blank corners left by rotating contribute nothing. Drag
      the rectangle's corners and edges to leave something out (e.g. labels above the
      lanes); everything outside it is greyed out.
@@ -105,7 +109,7 @@ text goes in it.
 | `index.html`, `css/`, `js/` | The web page (plain JavaScript, no build step) |
 | `js/bands.js` | Band finding (port of `scoping/band_peaks.py`) and lane placement |
 | `js/signal.js` | Gaussian smoothing, peak finding etc. with scipy's definitions |
-| `js/transform.js` | Rotation/skew/distort/perspective and the crop rule |
+| `js/transform.js` | Flip/rotation/perspective/skew/distort and the crop rule |
 | `js/image.js` | File reading, including a small uncompressed-TIFF reader |
 | `js/calibrate.js` | Ladder band picking (solidity) and the mass calibration (PCHIP, scipy's formulas) |
 | `js/running.js` | Correction for lanes running differently (port of `scoping/band_masses.py`) |

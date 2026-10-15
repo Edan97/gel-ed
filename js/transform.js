@@ -27,7 +27,7 @@ export function apply(m, x, y) {
   return [(m[0][0] * x + m[0][1] * y + m[0][2]) / w, (m[1][0] * x + m[1][1] * y + m[1][2]) / w];
 }
 
-export function matrix(w, h, { rotation = 0, skew = 0, distort = 0, perspective = 0 }) {
+export function matrix(w, h, { rotation = 0, skew = 0, distort = 0, perspective = 0, flip = false }) {
   const cx = (w - 1) / 2, cy = (h - 1) / 2;
   const t = (rotation * Math.PI) / 180;
   const p = (perspective * 0.6) / Math.max(h - 1, 1); // |p * h/2| <= 0.3 keeps every row in front
@@ -37,6 +37,7 @@ export function matrix(w, h, { rotation = 0, skew = 0, distort = 0, perspective 
     [[1, 0, 0], [distort, 1, 0], [0, 0, 1]],
     [[1, skew, 0], [0, 1, 0], [0, 0, 1]],
     [[Math.cos(t), -Math.sin(t), 0], [Math.sin(t), Math.cos(t), 0], [0, 0, 1]],
+    [[flip ? -1 : 1, 0, 0], [0, 1, 0], [0, 0, 1]], // mirror left-right first
     [[1, 0, -cx], [0, 1, -cy], [0, 0, 1]],
   ];
   return steps.reduce(mul);

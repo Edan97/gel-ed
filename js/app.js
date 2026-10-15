@@ -2,20 +2,20 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=7616c86b";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=7616c86b";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=7616c86b";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=7616c86b";
-import { median } from "./signal.js?v=7616c86b";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=7616c86b";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=7616c86b";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=7616c86b";
-import { log, logOnChange, logText } from "./log.js?v=7616c86b";
-import { LADDERS } from "./ladders.js?v=7616c86b";
-import { drawIcons } from "./icons.js?v=7616c86b";
+import { readImage } from "./image.js?v=c2cf0cc8";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=c2cf0cc8";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=c2cf0cc8";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=c2cf0cc8";
+import { median } from "./signal.js?v=c2cf0cc8";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=c2cf0cc8";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=c2cf0cc8";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=c2cf0cc8";
+import { log, logOnChange, logText } from "./log.js?v=c2cf0cc8";
+import { LADDERS } from "./ladders.js?v=c2cf0cc8";
+import { drawIcons } from "./icons.js?v=c2cf0cc8";
 
 const $ = (id) => document.getElementById(id);
-const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
+const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
 const TONE = ["brightness", "contrast"];
 const BANDS = ["k", "core", "smooth", "noiseRows"];
 const LABEL_SPACE = 26; // screen px above the overlay for lane numbers
@@ -29,6 +29,7 @@ const state = {
   crop: null,       // analysed rectangle {x0, y0, x1, y1}, edited-image pixels (inclusive)
   cropUser: false,  // trimmed by hand (otherwise it follows the whole image)
   invert: false,
+  flip: false,      // mirrored left-right (before the other geometry edits)
   bounds: null,     // dividers in crop columns; the spaces between them are lanes or dead space
   dead: new Set(),  // spaces between dividers (index into bounds) that aren't lanes: lanes are numbered over the rest
   countLanes: true, // next analysis estimates the number of lanes (on load and "Find lanes")
@@ -66,6 +67,7 @@ async function load(file) {
     state.countLanes = true;
     $("workspace").hidden = false;
     $("edit-stage").style.setProperty("--ar", `${w} / ${h}`); // display box keeps the original's shape
+    $("edit-stage").style.maxWidth = `calc(80vh * ${(w / h).toFixed(4)})`; // and is no taller than most of the window
     $("drop").classList.add("compact");
     const light = median(grey.filter((_, i) => i % 97 === 0)) >= 0.5;
     log("load", { name: file.name, type: file.type, bytes: file.size, w, h, lightBackground: light });
@@ -82,17 +84,32 @@ async function load(file) {
 // ---------- edits ----------
 
 const value = (id) => parseFloat($(id).value);
-const geometry = () => Object.fromEntries(GEOMETRY.map((k) => [k, value(k)]));
+const geometry = () => ({ ...Object.fromEntries(GEOMETRY.map((k) => [k, value(k)])), flip: state.flip });
 
 function resetEdits(rerun = true) {
   [...GEOMETRY, ...TONE].forEach((id) => { $(id).value = 0; });
   state.invert = false;
   $("invert").setAttribute("aria-pressed", "false");
+  state.flip = false;
+  $("flip").setAttribute("aria-pressed", "false");
   state.crop = null;
   state.cropUser = false;
   state.box = null;
   showValues();
   if (rerun) applyGeometry();
+}
+
+// After a flip: lane k of n becomes lane n + 1 - k. Ladders always follow (clamped to the
+// new count); labels, annotations, volumes and groups only if the count is unchanged.
+function mirrorLanes(before, after) {
+  for (const lad of state.ladders) lad.lane = Math.min(Math.max(1, after + 1 - lad.lane), after);
+  if (before !== after) return;
+  const flip = (arr) => { const out = []; arr.forEach((v, k) => { if (k >= 1 && k <= after) out[after + 1 - k] = v; }); return out; };
+  state.laneIds = flip(state.laneIds);
+  state.laneNotes = flip(state.laneNotes);
+  state.laneVols = flip(state.laneVols);
+  for (const g of state.groups) if (g.from !== null) [g.from, g.to] = [after + 1 - g.to, after + 1 - g.from];
+  drawAnnotations(true);
 }
 
 function applyGeometry() {
@@ -471,6 +488,8 @@ function analyse() {
       state.countLanes = false;
       state.bounds = est.n <= 60 ? est.bounds : null;
       state.dead = new Set(est.dead);
+      if (state.flipLanes) mirrorLanes(state.flipLanes, est.n);
+      state.flipLanes = 0;
     }
     const n = Math.max(1, Math.min(60, parseInt($("lanes").value, 10) || 1));
     if (!state.bounds || lanePairs().length !== n || state.bounds[state.bounds.length - 1] > w) {
@@ -1111,10 +1130,10 @@ $("dl-image").addEventListener("click", () => {
 
 $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
-  const edits = [...GEOMETRY, ...TONE].map((k) => value(k));
+  const edits = [...GEOMETRY.map((k) => value(k)), state.flip, ...TONE.map((k) => value(k))];
   // marked bands and ladder bands; kind/saturated/snr come from the band found at that row (if any)
   const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kDa", "kDa_uncertainty", "ladder_size_kDa", "found_or_created", "annotation",
-                 "kind", "saturated", "snr", "read_from", ...GEOMETRY, ...TONE, "invert"]];
+                 "kind", "saturated", "snr", "read_from", ...GEOMETRY, "flip", ...TONE, "invert"]];
   const found = (i, y) => state.results[i].bands.find((b) => Math.abs(b.y - y) <= 1);
   const extra = (b) => (b ? [b.kind, b.saturated, b.snr.toFixed(1)] : ["", "", ""]);
   lanePairs().forEach(([s, e], i) => {
@@ -1160,6 +1179,19 @@ $("invert").addEventListener("click", () => {
   log("invert", { on: state.invert });
   $("invert").setAttribute("aria-pressed", String(state.invert));
   applyTone();
+});
+// Flipping moves everything left-right: the area goes back to the whole image and the
+// lanes are found again.
+$("flip").addEventListener("click", () => {
+  state.flip = !state.flip;
+  log("flip", { on: state.flip });
+  $("flip").setAttribute("aria-pressed", String(state.flip));
+  if (!state.src) return;
+  state.flipLanes = state.bounds ? lanePairs().length : 0; // lane count before: lanes are mirrored after counting
+  state.cropUser = false;
+  state.countLanes = true;
+  state.bounds = null;
+  applyGeometry();
 });
 $("reset-edits").addEventListener("click", () => { log("reset-edits"); resetEdits(); });
 $("lanes").addEventListener("change", () => {
