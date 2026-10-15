@@ -28,8 +28,11 @@ behind it.
    The number of lanes is estimated when an image loads and when
    you press **Find lanes**: it fits evenly spaced lanes to where the bands are (each
    column's darkness above its own background), so empty lanes between loaded ones are
-   counted too; empty lanes at the edges are left out as margin
-   (`scoping/count_lanes.py` does the same in Python). Straighten the gel first; tilted
+   counted too; empty lanes at the edges start as empty space, not lanes
+   (`scoping/count_lanes.py` does the same in Python). Any lane can be made empty space
+   (click its number above the gel, which turns into ×, or the × in its row of the lane
+   annotations) and any empty space made a lane again (click its +); lanes are numbered
+   over the rest, and annotations, marked bands, ladders and groups move with their lane. Straighten the gel first; tilted
    lanes blur the gaps. Typing a number places exactly that many across the image, at the
    clearest gaps with widths kept regular; drag the dashed dividers to adjust (the outer
    ones too).

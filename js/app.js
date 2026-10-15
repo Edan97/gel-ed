@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=0f408db2";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=0f408db2";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=0f408db2";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=0f408db2";
-import { median } from "./signal.js?v=0f408db2";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=0f408db2";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=0f408db2";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=0f408db2";
-import { log, logOnChange, logText } from "./log.js?v=0f408db2";
-import { LADDERS } from "./ladders.js?v=0f408db2";
-import { drawIcons } from "./icons.js?v=0f408db2";
+import { readImage } from "./image.js?v=7616c86b";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=7616c86b";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=7616c86b";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=7616c86b";
+import { median } from "./signal.js?v=7616c86b";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=7616c86b";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=7616c86b";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=7616c86b";
+import { log, logOnChange, logText } from "./log.js?v=7616c86b";
+import { LADDERS } from "./ladders.js?v=7616c86b";
+import { drawIcons } from "./icons.js?v=7616c86b";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -29,7 +29,8 @@ const state = {
   crop: null,       // analysed rectangle {x0, y0, x1, y1}, edited-image pixels (inclusive)
   cropUser: false,  // trimmed by hand (otherwise it follows the whole image)
   invert: false,
-  bounds: null,     // lane boundaries in crop columns
+  bounds: null,     // dividers in crop columns; the spaces between them are lanes or dead space
+  dead: new Set(),  // spaces between dividers (index into bounds) that aren't lanes: lanes are numbered over the rest
   countLanes: true, // next analysis estimates the number of lanes (on load and "Find lanes")
   laneNote: "",
   ladders: [],      // one per ladder card: {type (key of LADDERS), lane (1-based), markers, manual, note}
@@ -244,7 +245,7 @@ function laneProfiles() {
   if ($("source").value === "original") {
     const { grey, w, h } = state.src;
     return profilesFromOriginal(grey, w, h, state.m, state.box, state.crop, state.bounds, core,
-                                DEFAULTS.satLevel, toneFunction());
+                                DEFAULTS.satLevel, toneFunction()).filter((_, i) => !state.dead.has(i));
   }
   const { grey, w, h } = state.cropImg;
   return lanePairs().map(([s, e]) => {
@@ -280,7 +281,7 @@ function computeBands() {
 // Ladder picks and the user's marked bands start over when the geometry, the analysed
 // area or the lanes change (their rows and lanes no longer mean the same thing).
 function resetLadders() {
-  for (const l of state.ladders) { l.manual = false; l.markers = null; }
+  for (const l of state.ladders) { l.manual = false; l.markers = null; delete l.home; }
   state.picks = [];
 }
 
@@ -431,8 +432,9 @@ function clickBand(p) {
   const top = overlayCanvas.height - state.cropImg.h;
   const y = Math.round(p.y - top);
   if (y < 0 || y >= state.cropImg.h) return;
-  const lane = state.bounds.findIndex((b, i) => i < state.bounds.length - 1 && p.x >= b && p.x < state.bounds[i + 1]);
-  if (lane < 0) return;
+  const space = spaceAt(p.x);
+  if (space < 0 || state.dead.has(space)) return; // dead space: not a lane
+  const lane = laneSpaces().indexOf(space);
   const picks = (state.picks[lane] = state.picks[lane] || []);
   // snap to the nearest band found that isn't marked yet (within 8 screen px); otherwise
   // create one where clicked. Close neighbours (e.g. a triplet) can each be marked, and a
@@ -468,13 +470,17 @@ function analyse() {
       state.laneNote = `Found ${est.n} lanes (typical lane ${Math.round(est.pitch)} px wide). `;
       state.countLanes = false;
       state.bounds = est.n <= 60 ? est.bounds : null;
+      state.dead = new Set(est.dead);
     }
     const n = Math.max(1, Math.min(60, parseInt($("lanes").value, 10) || 1));
-    if (!state.bounds || state.bounds.length !== n + 1 || state.bounds[n] > w) state.bounds = findLanes(grey, w, h, n);
+    if (!state.bounds || lanePairs().length !== n || state.bounds[state.bounds.length - 1] > w) {
+      state.bounds = findLanes(grey, w, h, n);
+      state.dead = new Set();
+    }
     computeBands();
     logOnChange("analysis", {
       area: { w, h }, geometry: geometry(), source: $("source").value, settings: bandOptions(),
-      bounds: state.bounds.map(Math.round),
+      bounds: state.bounds.map(Math.round), dead: [...state.dead],
       bandsPerLane: state.results.map((r) => r.bands.length),
       noisePerLane: state.results.map((r) => +r.noise.toPrecision(3)),
     });
@@ -482,7 +488,54 @@ function analyse() {
   }, 0);
 }
 
-const lanePairs = () => state.bounds.slice(0, -1).map((b, i) => [Math.round(b), Math.round(state.bounds[i + 1])]);
+// spaces between dividers [start, end); lanes are those that aren't dead space
+const spaces = () => state.bounds.slice(0, -1).map((b, i) => [Math.round(b), Math.round(state.bounds[i + 1])]);
+const laneSpaces = () => spaces().map((_, i) => i).filter((i) => !state.dead.has(i));
+const lanePairs = () => spaces().filter((_, i) => !state.dead.has(i));
+const spaceAt = (x) => state.bounds.findIndex((b, i) => i < state.bounds.length - 1 && x >= b && x < state.bounds[i + 1]);
+
+// Turn the space between two dividers into dead space (on) or back into a lane. Lanes
+// are numbered over the rest, so everything kept per lane moves with its lane: labels,
+// annotations, volumes, marked bands, ladders (a ladder whose lane goes moves to the
+// nearest lane and is picked again, and returns if that lane comes back) and groups
+// (trimmed to the lanes left).
+function setDead(space, on) {
+  const before = laneSpaces();
+  if (on && before.length <= 1) return; // keep at least one lane
+  if (on) state.dead.add(space); else state.dead.delete(space);
+  const after = laneSpaces();
+  const renumber = (k) => { const i = after.indexOf(before[k - 1]); return i < 0 ? null : i + 1; }; // old lane -> new
+  const remap = (arr, offset) => { // arrays indexed by lane number - offset
+    const out = [];
+    arr.forEach((v, i) => { const k = renumber(i + offset); if (k !== null) out[k - offset] = v; });
+    return out;
+  };
+  state.laneIds = remap(state.laneIds, 0);
+  state.laneNotes = remap(state.laneNotes, 0);
+  state.laneVols = remap(state.laneVols, 0);
+  state.picks = remap(state.picks, 1);
+  const nearest = (sp) => 1 + after.reduce((bi, s, i) => (Math.abs(s - sp) < Math.abs(after[bi] - sp) ? i : bi), 0);
+  for (const lad of state.ladders) {
+    const k = renumber(lad.lane);
+    if (lad.home !== undefined && after.includes(lad.home)) { // its own lane is back
+      lad.lane = after.indexOf(lad.home) + 1; delete lad.home; lad.manual = false; lad.markers = null;
+    } else if (k === null) {
+      lad.home ??= before[lad.lane - 1];
+      lad.lane = nearest(before[lad.lane - 1]); lad.manual = false; lad.markers = null;
+    } else lad.lane = k;
+  }
+  for (const g of state.groups) {
+    if (g.from === null) continue;
+    const kept = after.map((s, i) => i + 1).filter((k) => after[k - 1] >= before[g.from - 1] && after[k - 1] <= before[g.to - 1]);
+    if (kept.length) { g.from = kept[0]; g.to = kept[kept.length - 1]; } else g.from = g.to = null;
+  }
+  log(on ? "lane-removed" : "lane-added", { space, lanes: after.length, dead: [...state.dead] });
+  $("lanes").value = after.length;
+  stripHover = null;
+  computeBands();
+  drawResults();
+  drawAnnotations(true);
+}
 
 function drawResults(active = -1) {
   const { grey, w, h } = state.cropImg;
@@ -499,6 +552,11 @@ function drawResults(active = -1) {
   drawDividers(ctx, state.bounds, top, h, px, active);
   drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true",
               state.marks, markDrag, state.pickMarks);
+  const sp = spaces();
+  drawDeadSpace(ctx, [...state.dead].map((i) => sp[i]).filter(Boolean), top, h, px,
+                stripHover === null || !sp[stripHover] ? null
+                  : { start: sp[stripHover][0], end: sp[stripHover][1], dead: state.dead.has(stripHover) },
+                getComputedStyle(document.body).getPropertyValue("--surface").trim() || "#fff");
   const found = state.results.reduce((a, r) => a + r.bands.length, 0);
   const marked = state.pickMarks.reduce((a, m) => a + m.length, 0);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
@@ -513,6 +571,8 @@ function drawResults(active = -1) {
 
 // A ladder marker or marked band under the pointer: {kind: "ladder"|"pick", lane, mark}.
 // Only in the circles view.
+let stripHover = null; // space under the pointer in the strip above the gel (null: none)
+overlayCanvas.addEventListener("pointerleave", () => { if (stripHover !== null) { stripHover = null; drawResults(); } });
 let markDrag = null;
 let clickStart = null; // a press that isn't on a marker or divider: a click on a band if it doesn't move
 function markerAt(p) {
@@ -545,6 +605,11 @@ overlayCanvas.addEventListener("pointerdown", (e) => {
   if (!state.bounds) return;
   const p = canvasPoint(overlayCanvas, e);
   if (e.button !== 0) return; // right-click is handled by "contextmenu"
+  if (p.y < overlayCanvas.height - state.cropImg.h) { // the strip above the gel: remove or add a lane
+    const space = spaceAt(p.x);
+    if (space >= 0) setDead(space, !state.dead.has(space));
+    return;
+  }
   const hit = markerAt(p);
   if (hit) {
     markDrag = { ...hit, x: hit.mark.x, y: hit.mark.y, startX: p.x, startY: p.y };
@@ -572,8 +637,13 @@ overlayCanvas.addEventListener("pointermove", (e) => {
     return;
   }
   if (laneDrag === null) {
-    const near = state.bounds && state.bounds.some((b) => Math.abs(b - p.x) <= 8 * p.px);
-    overlayCanvas.style.cursor = state.cropImg && markerAt(p) ? "grab" : near ? "ew-resize" : "default";
+    if (!state.bounds || !state.cropImg) return;
+    const inStrip = p.y < overlayCanvas.height - state.cropImg.h;
+    const space = inStrip ? spaceAt(p.x) : -1;
+    if ((space < 0 ? null : space) !== stripHover) { stripHover = space < 0 ? null : space; drawResults(); }
+    overlayCanvas.title = space < 0 ? "" : state.dead.has(space) ? "Make this a lane" : `Remove lane ${laneSpaces().indexOf(space) + 1} (make it empty space)`;
+    const near = !inStrip && state.bounds.some((b) => Math.abs(b - p.x) <= 8 * p.px);
+    overlayCanvas.style.cursor = inStrip ? (space < 0 ? "default" : "pointer") : markerAt(p) ? "grab" : near ? "ew-resize" : "default";
     return;
   }
   const b = state.bounds, i = laneDrag, gap = 4;
@@ -666,7 +736,7 @@ function drawLadderCards() {
       changed(); drawLadderCards(); drawLadderNotes(); updateCaption();
     });
     const laneSelect = card.querySelector(".ladder-lane");
-    const nLanes = state.bounds ? state.bounds.length - 1 : 1;
+    const nLanes = state.bounds ? lanePairs().length : 1;
     for (let k = 1; k <= nLanes; k++) laneSelect.add(new Option(String(k), String(k)));
     laneSelect.value = String(Math.min(ladder.lane, nLanes));
     card.querySelector(".ladder-note").textContent = ladder.note || "";
@@ -674,7 +744,7 @@ function drawLadderCards() {
     select.addEventListener("change", () => { ladder.type = select.value; ladder.sizes = presetSizes(ladder.type);
       log("ladder-type", { ladder: i + 1, type: ladder.type }); changed(); drawLadderCards(); drawLadderNotes(); updateCaption();
       if (ladder.type === "custom") $("ladder-cards").children[i].querySelector(".ladder-sizes").focus(); });
-    laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); log("ladder-lane", { ladder: i + 1, lane: ladder.lane }); changed(); });
+    laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); delete ladder.home; log("ladder-lane", { ladder: i + 1, lane: ladder.lane }); changed(); });
     card.querySelector(".ladder-remove").addEventListener("click", () => {
       state.ladders.splice(i, 1);
       if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
@@ -685,7 +755,7 @@ function drawLadderCards() {
 
 const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], sizes: presetSizes(Object.keys(LADDERS)[0]), lane, markers: null, manual: false, note: "" });
 $("add-ladder").addEventListener("click", () => {
-  state.ladders.push(newLadder(state.bounds ? state.bounds.length - 1 : 1)); // a second ladder: often the last lane
+  state.ladders.push(newLadder(state.bounds ? lanePairs().length : 1)); // a second ladder: often the last lane
   if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
 });
 state.ladders.push(newLadder(1)); // most gels have one ladder, in the first lane
@@ -725,7 +795,7 @@ let groupDrag = null; // {g, start}
 function drawAnnotations(force = false) {
   const table = $("annot");
   if (!force && (typingIn(table) || groupDrag)) return; // don't rebuild under the user
-  const n = state.bounds ? state.bounds.length - 1 : 0;
+  const n = state.bounds ? lanePairs().length : 0;
   const ladderLanes = new Set(state.ladders.map((l) => l.lane));
   const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k));
   for (const g of state.groups) if (g.from && (g.from > n || g.to > n)) { g.from = g.to = null; }
@@ -770,7 +840,10 @@ function drawAnnotations(force = false) {
       td.dataset.lane = String(k);
       tr.append(td);
     });
-    tr.append(document.createElement("td"));
+    const end = document.createElement("td");
+    end.innerHTML = `<button type="button" class="link lane-remove" title="Remove lane ${k} (make it empty space)">×</button>`;
+    end.querySelector("button").addEventListener("click", () => setDead(laneSpaces()[k - 1], true));
+    tr.append(end);
     return tr;
   });
   table.replaceChildren(head, ...rows);
@@ -923,7 +996,7 @@ function methodSentence() {
 //    Groups: + CPI, lanes 2–7; Veh (no CPI), lanes 8–13."
 function generateCaption() {
   if (!state.bounds) return "";
-  const n = state.bounds.length - 1;
+  const n = lanePairs().length;
   const vol = (v) => (v && v.trim() ? ` (${v.trim().replace(/\s*(µ|u)l$/i, "")} µL)` : "");
   const lines = [];
   for (let k = 1; k <= n; k++) {

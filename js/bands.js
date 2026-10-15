@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=0f408db2";
+import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=7616c86b";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -212,9 +212,10 @@ function columnContent(img, w, h) {
 // w/40 (at least 8 px) to w/2 in 1% steps, offsets in steps of p/40 (at least 1 px).
 // Then each divider moves to the palest column within +-15% of p; empty lanes at either
 // edge (middle 40% no darker than 10% of the way from the 5th to the 95th percentile
-// column) are margin, not lanes; and a remaining edge piece narrower than half a lane
-// joins its neighbour. Returns {n, pitch, gaps, bounds}: bounds run from the first lane's
-// left edge to the last lane's right edge (0 and w unless there's margin). On gel_02:
+// column) are dead space, not lanes (the user can turn them back into lanes); and an
+// edge lane narrower than half a lane joins its neighbour. Returns {n, pitch, gaps,
+// bounds, dead}: bounds from 0 to w, every divider; dead = indices of the spaces between
+// them that aren't lanes; n and gaps count lanes only. On gel_02:
 // 13 lanes, dividers within 20 px of the hand-placed ones; on gel_03 (most lanes
 // empty): 9 lanes, one per well.
 export function countLanes(img, w, h) {
@@ -254,11 +255,14 @@ export function countLanes(img, w, h) {
   const sorted = Float64Array.from(s).sort();
   const lo = sorted[Math.floor(0.05 * (w - 1))], hi = sorted[Math.floor(0.95 * (w - 1))];
   const empty = (a, b) => !(mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.1 * (hi - lo));
-  while (bounds.length > 2 && empty(bounds[0], bounds[1])) bounds.shift();     // margin
-  while (bounds.length > 2 && empty(bounds[bounds.length - 2], bounds[bounds.length - 1])) bounds.pop();
-  if (bounds.length > 3 && bounds[0] === 0 && bounds[1] < p / 2) bounds.splice(1, 1); // thin edge piece
-  if (bounds.length > 3 && bounds[bounds.length - 1] === w && w - bounds[bounds.length - 2] < p / 2) bounds.splice(bounds.length - 2, 1);
-  return { n: bounds.length - 1, pitch: p, gaps: bounds.slice(1, -1), bounds };
+  let first = 0, last = bounds.length - 2; // lanes: spaces first..last; the rest is dead space
+  while (first < last && empty(bounds[first], bounds[first + 1])) first++;
+  while (last > first && empty(bounds[last], bounds[last + 1])) last--;
+  if (last - first >= 2 && first === 0 && bounds[1] < p / 2) { bounds.splice(1, 1); last--; } // thin edge lane
+  if (last - first >= 2 && last === bounds.length - 2 && w - bounds[last] < p / 2) { bounds.splice(last, 1); last--; }
+  const dead = [];
+  for (let i = 0; i < bounds.length - 1; i++) if (i < first || i > last) dead.push(i);
+  return { n: last - first + 1, pitch: p, gaps: bounds.slice(first + 1, last + 1), bounds, dead };
 }
 
 // Lane boundaries for n lanes across an image, chosen together like the teeth of a comb:

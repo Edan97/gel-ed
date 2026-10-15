@@ -118,6 +118,31 @@ function label(ctx, text, x, y, px, colour) {
   ctx.restore();
 }
 
+// Dead space (spaces between dividers that aren't lanes): washed out, with a "+" above to
+// make it a lane again. hover: {start, end, dead} under the pointer in the strip above the
+// gel: a lane's number turns into a red "x" (click: make it dead space), a dead space's
+// "+" darkens.
+export function drawDeadSpace(ctx, dead, top, height, px, hover = null, surface = "#fff") {
+  ctx.save();
+  ctx.font = `bold ${Math.round(16 * px)}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  for (const [start, end] of dead) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.fillRect(start, top, end - start, height);
+    const on = hover && hover.dead && hover.start === start;
+    ctx.fillStyle = on ? COLOURS.lane : "rgba(31, 78, 140, 0.45)";
+    ctx.fillText("+", (start + end) / 2, top - 3 * px);
+  }
+  if (hover && !hover.dead) {
+    ctx.fillStyle = surface;
+    ctx.fillRect(hover.start + 1, 0, hover.end - hover.start - 2, top);
+    ctx.fillStyle = COLOURS.peak;
+    ctx.fillText("×", (hover.start + hover.end) / 2, top - 3 * px);
+  }
+  ctx.restore();
+}
+
 function drawLaneNumber(ctx, li, start, end, top, px) {
   ctx.fillStyle = COLOURS.lane;
   ctx.font = `bold ${Math.round(14 * px)}px system-ui, sans-serif`;
