@@ -26,10 +26,13 @@ behind it.
    and a letter counted from the top of the lane: 1.A, 1.B, … (AA, AB, … after Z), in
    the "band" column of the bands CSV.
    The number of lanes is estimated when an image loads and when
-   you press **Find lanes**: it finds the pale gaps between lanes and counts them.
-   Straighten the gel first; tilted lanes blur the gaps. Typing a number places exactly
-   that many. Lanes are placed at the clearest gaps with widths kept regular; drag the
-   dashed dividers to adjust.
+   you press **Find lanes**: it fits evenly spaced lanes to where the bands are (each
+   column's darkness above its own background), so empty lanes between loaded ones are
+   counted too; empty lanes at the edges are left out as margin
+   (`scoping/count_lanes.py` does the same in Python). Straighten the gel first; tilted
+   lanes blur the gaps. Typing a number places exactly that many across the image, at the
+   clearest gaps with widths kept regular; drag the dashed dividers to adjust (the outer
+   ones too).
    **Redo analysis** re-reads the profiles and finds bands again, keeping the lanes.
    **Click a band to mark it**: the nearest band found in that lane gets a hollow red
    circle at its middle (halfway between its edges, measured at half its darkness),

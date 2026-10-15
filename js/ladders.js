@@ -4,6 +4,11 @@
 // and can be edited on the card (Custom starts empty).
 
 export const LADDERS = {
+  // first = the default for new ladder cards
+  "novex-sharp-15": {
+    name: "Novex™ Sharp Pre-stained Protein Standard, 15 to 260 kDa",
+    kda: [260, 160, 110, 80, 60, 50, 40, 30, 20, 15],
+  },
   "magicmark-xp": {
     name: "MagicMark™ XP Western Protein Standard",
     kda: [220, 120, 100, 80, 60, 50, 40, 30, 20],

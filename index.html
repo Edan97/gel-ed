@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=5acba693">
-  <script type="module" src="js/app.js?v=5acba693"></script>
+  <link rel="stylesheet" href="css/style.css?v=0f408db2">
+  <script type="module" src="js/app.js?v=0f408db2"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="5acba693">version 32</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="0f408db2">version 33</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -98,8 +98,8 @@
                 <button type="button" id="find-lanes" class="btn">Find lanes</button>
                 <button type="button" id="redo" class="btn">Redo analysis</button>
               </div>
-              <p class="hint"><strong>Find lanes</strong> counts the lanes from the gaps between them and places them;
-                straighten the gel first, as tilted lanes blur the gaps. Typing a number places exactly that many.
+              <p class="hint"><strong>Find lanes</strong> fits evenly spaced lanes to where the bands are (empty lanes
+                between loaded ones count; empty edges are margin); straighten the gel first, as tilted lanes blur the gaps. Typing a number places exactly that many.
                 Drag the dashed dividers to adjust.</p>
             </fieldset>
             <fieldset>
@@ -116,7 +116,7 @@
                   <button type="button" class="link ladder-remove">Remove</button>
                 </div>
                 <select class="ladder-type"></select>
-                <label class="row">Sizes <input type="text" class="ladder-sizes" placeholder="e.g. 250, 150, 100, 75, 50"> kDa</label>
+                <label class="ladder-sizes-label">Sizes (kDa)<textarea class="ladder-sizes" rows="2" spellcheck="false" placeholder="e.g. 250, 150, 100, 75, 50"></textarea></label>
                 <label class="row">Lane <select class="ladder-lane"></select></label>
                 <p class="hint ladder-note"></p>
               </div>

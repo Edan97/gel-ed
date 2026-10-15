@@ -51,6 +51,8 @@ STEPS = [
     ("Band masses, uncertainties, ~105/109 kDa same-protein tests",
      ["scoping/band_masses.py", GEL02, "--lanes", LANES02, "--same", "103", "107.5", "--same", "107.5", "112",
       "--same-lanes", *map(str, range(2, 14))]),
+    ("Lane counting (as the web page)",
+     ["scoping/count_lanes.py", GEL02, "--lanes", LANES02, "--out", OUT / "gel_02_count_lanes.csv"]),
     ("Reference for the browser tests (open tests/parity.html and tests/straighten.html)",
      ["scoping/js_reference.py", GEL02, "--lanes", LANES02]),
 ]
@@ -106,6 +108,11 @@ def checks():
     ok = len(same) == 2 and {"4", "10"} <= both[0] and {"4", "10"} <= both[1]
     out.append(("Same-protein: lanes 4 and 10 each hold both the ~105 and ~109 kDa band (no alignment needed)",
                 ok, "; ".join(f"{t['mean_kDa']} kDa: lanes {t['lanes']}" for t in same)))
+
+    counted = read_csv(OUT / "gel_02_count_lanes.csv")
+    worst = float(counted[0]["worst_divider_px"] or "inf")
+    out.append(("Lane counting: gel_02 has 13 lanes, dividers within 20 px of the hand-placed gaps",
+                len(counted) == 13 and worst <= 20, f"{len(counted)} lanes, worst divider {worst:.0f} px"))
 
     peaks = read_csv(OUT / "gel_02_lanes_summary.csv")
     lad = [r for r in peaks if r["lane_no"] == "1" and r["method"] == "centroid"][0]

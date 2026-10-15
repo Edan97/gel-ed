@@ -12,15 +12,16 @@
 <body>
   <h1>Lane counting</h1>
   <p>Runs <code>countLanes</code> (js/bands.js) on gel_02, which has 13 lanes, with and without the labels above the
-    lanes, and on the 3°-rotated copy after straightening it by 3°. Also shows what it gives on the first sample
-    (true count not recorded) and on unstraightened images (tilt blurs the gaps; straighten first). Serve the
+    lanes, and on the 3°-rotated copy after straightening it by 3°; on gel_02 its dividers must also be within 20 px
+    of the hand-placed gaps (gel_02_lanes.csv). gel_03 has 9 wells, most of them empty. Also shows what it gives on
+    the first sample (true count not recorded) and on unstraightened images (tilt blurs the gaps; straighten first). Serve the
     repository root after running <code>scoping/run_all.py</code>.</p>
   <p id="result">Running…</p>
   <table id="table"></table>
   <script type="module">
-    import { readImage } from "../js/image.js?v=5acba693";
-    import * as T from "../js/transform.js?v=5acba693";
-    import { countLanes } from "../js/bands.js?v=5acba693";
+    import { readImage } from "../js/image.js?v=0f408db2";
+    import * as T from "../js/transform.js?v=0f408db2";
+    import { countLanes } from "../js/bands.js?v=0f408db2";
 
     const get = async (u) => {
       const r = await fetch(u);
@@ -36,22 +37,28 @@
       const A = await get("../scoping/samples/gel_02.jpg");
       const R = await get("../scoping/out/gel_02_rot3.png");
       const G1 = await get("../scoping/samples/210826_Het_Mut_IVP_Opt_2.tif");
+      const G3 = await get("../scoping/samples/gel_03.png");
+      const rows = (await (await fetch("../scoping/samples/gel_02_lanes.csv")).text()).trim().split("\n").slice(1)
+        .map((l) => l.split(",")).map((c) => [+c[c.length - 2], +c[c.length - 1]]);
+      const truth02 = rows.slice(1).map(([start], i) => (rows[i][1] + start) / 2); // between neighbouring lanes
       const cases = [
-        ["gel_02, below the labels", [A.grey.slice(140 * A.w), A.w, A.h - 140], 13],
-        ["gel_02, whole image", [A.grey, A.w, A.h], 13],
+        ["gel_02, below the labels", [A.grey.slice(140 * A.w), A.w, A.h - 140], 13, truth02],
+        ["gel_02, whole image", [A.grey, A.w, A.h], 13, truth02],
+        ["gel_03 (most lanes empty)", [G3.grey, G3.w, G3.h], 9],
         ["gel_02 rotated 3°, straightened by 3°", straightened(R, 3), 13],
         ["gel_02 rotated 3°, not straightened", [R.grey, R.w, R.h], null],
         ["first sample (210826…tif), whole image", [G1.grey, G1.w, G1.h], null],
       ];
       const table = document.getElementById("table");
-      table.innerHTML = "<tr><th>Image</th><th>Lanes found</th><th>Lane width (px)</th><th>Expected</th><th></th></tr>";
+      table.innerHTML = "<tr><th>Image</th><th>Lanes found</th><th>Lane width (px)</th><th>Expected</th><th>Worst divider (px)</th><th></th></tr>";
       let failed = 0;
-      for (const [name, args, want] of cases) {
-        const { n, pitch } = countLanes(...args);
-        const ok = want === null ? null : n === want;
+      for (const [name, args, want, truth] of cases) {
+        const { n, pitch, gaps } = countLanes(...args);
+        const worst = truth && n === want ? Math.max(...truth.map((t, i) => Math.abs(gaps[i] - t))) : null;
+        const ok = want === null ? null : n === want && (worst === null || worst <= 20);
         if (ok === false) failed++;
         table.insertAdjacentHTML("beforeend", `<tr><td>${name}</td><td>${n}</td><td>${Math.round(pitch)}</td>` +
-          `<td>${want ?? "—"}</td><td class="${ok ? "ok" : ok === false ? "fail" : ""}">${ok ? "ok" : ok === false ? "FAIL" : ""}</td></tr>`);
+          `<td>${want ?? "—"}</td><td>${worst === null ? "" : Math.round(worst)}</td><td class="${ok ? "ok" : ok === false ? "fail" : ""}">${ok ? "ok" : ok === false ? "FAIL" : ""}</td></tr>`);
       }
       const res = document.getElementById("result");
       res.className = failed ? "fail" : "ok";

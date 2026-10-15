@@ -156,7 +156,7 @@ input[type="number"] {
 .ladder-card .ladder-note { color: var(--error); }
 
 .view { min-width: 0; }
-canvas.gel { display: block; width: 100%; height: auto; border-radius: 6px; touch-action: none; }
+canvas.gel { display: block; width: 100%; height: auto; margin: 0 auto; border-radius: 6px; touch-action: none; }
 /* Editor display box: fixed to the original image's shape; the edited image (which grows
    when rotated or skewed) is scaled down to fit inside it, never cut off. */
 .stage {
@@ -234,4 +234,5 @@ label.row.method-row { justify-content: flex-start; gap: 0.6rem; font-size: 0.9r
 .antibody-row .ab-select { max-width: 32rem; }
 .antibody-row .ab-text { width: 26rem; max-width: 100%; }
 .antibody-row [hidden] { display: none; }
-.ladder-sizes { flex: 1; min-width: 0; }
+.ladder-sizes-label { display: block; margin: 0.4rem 0 0.2rem; font-size: 0.9rem; }
+.ladder-sizes { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2rem; resize: vertical; font: inherit; }

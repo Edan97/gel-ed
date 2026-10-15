@@ -280,6 +280,7 @@ alignment grid search) takes well under a second per lane.
 | `gel_ed/load.py` | Loader (any format → 16-bit greyscale) |
 | `scoping/run_all.py` | Regenerate everything and check results |
 | `scoping/lanes.py` | Read lane CSVs, number lanes |
+| `scoping/count_lanes.py` | Count and place lanes as the web page does (comb fit to band content) |
 | `scoping/band_peaks.py` | Band picking; profile figures |
 | `scoping/band_masses.py` | Masses with running correction |
 | `scoping/compare_lanes.py` | Centre-lines for all lanes, degree by LOO |

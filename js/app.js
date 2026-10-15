@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=5acba693";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=5acba693";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=5acba693";
-import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=5acba693";
-import { median } from "./signal.js?v=5acba693";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=5acba693";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=5acba693";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=5acba693";
-import { log, logOnChange, logText } from "./log.js?v=5acba693";
-import { LADDERS } from "./ladders.js?v=5acba693";
-import { drawIcons } from "./icons.js?v=5acba693";
+import { readImage } from "./image.js?v=0f408db2";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=0f408db2";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=0f408db2";
+import { greyToImageData, drawOverlay, drawDividers, bandLetter, renderFigure } from "./draw.js?v=0f408db2";
+import { median } from "./signal.js?v=0f408db2";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=0f408db2";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=0f408db2";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=0f408db2";
+import { log, logOnChange, logText } from "./log.js?v=0f408db2";
+import { LADDERS } from "./ladders.js?v=0f408db2";
+import { drawIcons } from "./icons.js?v=0f408db2";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "skew", "distort", "perspective"];
@@ -467,10 +467,10 @@ function analyse() {
       $("lanes").value = Math.max(1, Math.min(60, est.n));
       state.laneNote = `Found ${est.n} lanes (typical lane ${Math.round(est.pitch)} px wide). `;
       state.countLanes = false;
-      state.bounds = null;
+      state.bounds = est.n <= 60 ? est.bounds : null;
     }
     const n = Math.max(1, Math.min(60, parseInt($("lanes").value, 10) || 1));
-    if (!state.bounds || state.bounds.length !== n + 1 || state.bounds[n] !== w) state.bounds = findLanes(grey, w, h, n);
+    if (!state.bounds || state.bounds.length !== n + 1 || state.bounds[n] > w) state.bounds = findLanes(grey, w, h, n);
     computeBands();
     logOnChange("analysis", {
       area: { w, h }, geometry: geometry(), source: $("source").value, settings: bandOptions(),
@@ -486,6 +486,8 @@ const lanePairs = () => state.bounds.slice(0, -1).map((b, i) => [Math.round(b), 
 
 function drawResults(active = -1) {
   const { grey, w, h } = state.cropImg;
+  // no taller than most of the window, so tall narrow gels can be edited without scrolling
+  overlayCanvas.style.maxWidth = `calc(80vh * ${(w / h).toFixed(4)})`;
   const px = w / (overlayCanvas.clientWidth || w);
   const top = Math.round(LABEL_SPACE * px);
   overlayCanvas.width = w;
@@ -657,6 +659,7 @@ function drawLadderCards() {
     select.value = ladder.type;
     const sizesBox = card.querySelector(".ladder-sizes");
     sizesBox.value = ladder.sizes.join(", ");
+    sizesBox.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); sizesBox.blur(); } });
     sizesBox.addEventListener("change", () => {
       ladder.sizes = parseSizes(sizesBox.value);
       log("ladder-sizes", { ladder: i + 1, sizes: ladder.sizes });

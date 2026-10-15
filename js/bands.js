@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, minFilter1d, roundHalfEven } from "./signal.js?v=5acba693";
+import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=0f408db2";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -166,70 +166,103 @@ export function bandCentre(img, w, h, start, end, y) {
   return start + (left + right) / 2;
 }
 
-// Mean darkness down each column, ignoring blank (NaN) pixels; blank columns count as pale.
-function columnDarkness(img, w, h) {
-  const col = new Float64Array(w), cnt = new Float64Array(w);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+// Band content of each column: darkness above the column's own background, averaged
+// down the column (blank NaN pixels ignored). The background is a running median down
+// the column over about 1/8 of the height, taken every quarter window and interpolated.
+// Unlike plain darkness, the gel's uneven background cancels, so a lane with bands
+// stands out from an empty one. As scoping/count_lanes.py.
+function columnContent(img, w, h) {
+  const win = Math.max(15, Math.floor(h / 8)) | 1, half = win >> 1, step = Math.max(1, win >> 2);
+  const ys = [];
+  for (let y = 0; y < h; y += step) ys.push(y);
+  if (ys[ys.length - 1] !== h - 1) ys.push(h - 1);
+  const out = new Float64Array(w);
+  const buf = [];
+  for (let x = 0; x < w; x++) {
+    const meds = ys.map((y) => {
+      buf.length = 0;
+      for (let r = Math.max(0, y - half); r < Math.min(h, y + half + 1); r++) {
+        const v = img[r * w + x];
+        if (!Number.isNaN(v)) buf.push(1 - v);
+      }
+      return buf.length ? median(buf) : NaN;
+    });
+    let sum = 0, cnt = 0, j = 0;
+    for (let y = 0; y < h; y++) {
       const v = img[y * w + x];
-      if (Number.isNaN(v)) continue; // blank: outside the original image
-      col[x] += 1 - v;
-      cnt[x]++;
+      if (Number.isNaN(v)) continue;
+      while (j < ys.length - 2 && ys[j + 1] <= y) j++;
+      const a = meds[j], b = meds[j + 1];
+      const t = (y - ys[j]) / (ys[j + 1] - ys[j] || 1);
+      const bg = Number.isNaN(a) ? b : Number.isNaN(b) ? a : a + (b - a) * Math.min(1, Math.max(0, t));
+      sum += Math.max(0, 1 - v - bg);
+      cnt++;
     }
+    out[x] = cnt ? sum / cnt : 0;
   }
-  let pale = Infinity;
-  for (let x = 0; x < w; x++) if (cnt[x]) pale = Math.min(pale, col[x] / cnt[x]);
-  return col.map((v, x) => (cnt[x] ? v / cnt[x] : pale));
+  return out;
 }
 
-// How many lanes? Finds the pale gaps between lanes and counts them.
-// Lanes differ hugely in darkness (a faint lane next to a saturated one), so the column
-// profile is first rescaled to its own local range (window about one lane wide): every
-// lane then reads as "dark" and every gap as "pale". Gaps are peaks of that paleness
-// (prominence >= 0.2); the lane width is the median spacing between neighbouring gaps.
-// Gaps closer than half a lane are merged; a spacing of about k lane widths counts as k
-// lanes (missed gaps). Each edge region counts as one lane (more if it's at least 1.6
-// lane widths across), unless nothing in it is darker than the gaps plus 30% of the way
-// to a typical lane: then it's empty margin. On gel_02 this finds all 12 gaps, each
-// within 16 px: 13 lanes.
+// How many lanes, and where? Fits an evenly spaced comb to the column band content:
+// for each lane width p and offset, the score is the sum over lanes of (content across
+// the lane's middle 40%) minus (content at its dividers, +-5% of p). Loaded lanes score
+// when the dividers fall in the gaps beside them; empty lanes score about nothing, so
+// they don't pull the fit (a gel with only a few loaded lanes still gets the right
+// width), and halving or doubling the width puts dividers on bands. Lane widths from
+// w/40 (at least 8 px) to w/2 in 1% steps, offsets in steps of p/40 (at least 1 px).
+// Then each divider moves to the palest column within +-15% of p; empty lanes at either
+// edge (middle 40% no darker than 10% of the way from the 5th to the 95th percentile
+// column) are margin, not lanes; and a remaining edge piece narrower than half a lane
+// joins its neighbour. Returns {n, pitch, gaps, bounds}: bounds run from the first lane's
+// left edge to the last lane's right edge (0 and w unless there's margin). On gel_02:
+// 13 lanes, dividers within 20 px of the hand-placed ones; on gel_03 (most lanes
+// empty): 9 lanes, one per well.
 export function countLanes(img, w, h) {
-  const s = gaussian1d(columnDarkness(img, w, h), 2);
-  const maxFilter = (a, size) => minFilter1d(a.map((v) => -v), size).map((v) => -v);
-  const gapsWith = (win) => {
-    win = Math.max(5, Math.round(win) | 1);
-    const lo = minFilter1d(s, win), hi = maxFilter(s, win);
-    const pale = s.map((v, i) => (hi[i] - v) / ((hi[i] - lo[i]) || 1)); // 1 = palest nearby
-    return findPeaks(pale, 0.2);
+  const s = gaussian1d(columnContent(img, w, h), 2);
+  const cs = new Float64Array(w + 1);
+  for (let x = 0; x < w; x++) cs[x + 1] = cs[x] + s[x];
+  const mean = (a, b) => {
+    a = Math.max(0, Math.round(a)); b = Math.min(w, Math.round(b));
+    return b > a ? (cs[b] - cs[a]) / (b - a) : NaN;
   };
-  const median = (a) => { const t = [...a].sort((x, y) => x - y); return t[Math.floor(t.length / 2)]; };
-  const spacingOf = (g) => median(g.slice(1).map((p, i) => p.i - g[i].i));
-  let gaps = gapsWith(0.08 * w);                     // first guess: about 1/12 of the width
-  if (gaps.length >= 2) gaps = gapsWith(spacingOf(gaps)); // then a window one lane wide
-  if (gaps.length < 2) return { n: gaps.length + 1, pitch: w / (gaps.length + 1), gaps: gaps.map((g) => g.i) };
-  let pitch = spacingOf(gaps);
-  const merged = [];
-  for (const g of gaps) {
-    const last = merged[merged.length - 1];
-    if (last && g.i - last.i < pitch / 2) { if (g.prom > last.prom) merged[merged.length - 1] = g; } else merged.push(g);
+  let best = { score: -Infinity, p: w, x0: 0 };
+  for (let p = Math.max(8, w / 40); p <= w / 2; p *= 1.01) {
+    const dx = Math.max(1, p / 40);
+    for (let x0 = 0; x0 < p; x0 += dx) { // x0: one divider
+      let score = 0;
+      for (let k = Math.floor(-x0 / p); ; k++) {
+        const c = x0 + (k + 0.5) * p;
+        if (c >= w) break;
+        if (c < 0) continue;
+        const L = mean(c - 0.2 * p, c + 0.2 * p);
+        const ds = [c - p / 2, c + p / 2].filter((b) => b >= 0 && b < w)
+          .map((b) => mean(b - 0.05 * p, b + 0.05 * p)).filter((v) => !Number.isNaN(v));
+        if (Number.isNaN(L) || !ds.length) continue;
+        score += L - ds.reduce((t, v) => t + v, 0) / ds.length;
+      }
+      if (score > best.score) best = { score, p, x0 };
+    }
   }
-  gaps = merged;
-  pitch = spacingOf(gaps) || pitch;
-  let n = 0;
-  for (let i = 1; i < gaps.length; i++) n += Math.max(1, Math.round((gaps[i].i - gaps[i - 1].i) / pitch));
-  const gapLevel = median(gaps.map((g) => s[g.i]));
-  const laneLevel = median(gaps.slice(1).map((g, i) => s[Math.round((g.i + gaps[i].i) / 2)]));
-  const edge = (x0, x1) => {
-    let darkest = -Infinity;
-    for (let x = x0; x < x1; x++) darkest = Math.max(darkest, s[x]);
-    if (!(darkest >= gapLevel + 0.3 * (laneLevel - gapLevel))) return 0; // empty margin
-    return x1 - x0 >= 1.6 * pitch ? Math.round((x1 - x0) / pitch) : 1;
-  };
-  n += edge(0, gaps[0].i) + edge(gaps[gaps.length - 1].i + 1, w);
-  return { n, pitch, gaps: gaps.map((g) => g.i) };
+  const { p, x0 } = best;
+  const div = [];
+  for (let b = x0 % p; b < w; b += p) if (b > 0) div.push(b);
+  let bounds = [0, ...div.map((b) => {                              // onto the palest column nearby
+    let at = Math.round(b);
+    for (let x = Math.max(1, Math.round(b - 0.15 * p)); x <= Math.min(w - 1, Math.round(b + 0.15 * p)); x++) if (s[x] < s[at]) at = x;
+    return at;
+  }), w];
+  const sorted = Float64Array.from(s).sort();
+  const lo = sorted[Math.floor(0.05 * (w - 1))], hi = sorted[Math.floor(0.95 * (w - 1))];
+  const empty = (a, b) => !(mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.1 * (hi - lo));
+  while (bounds.length > 2 && empty(bounds[0], bounds[1])) bounds.shift();     // margin
+  while (bounds.length > 2 && empty(bounds[bounds.length - 2], bounds[bounds.length - 1])) bounds.pop();
+  if (bounds.length > 3 && bounds[0] === 0 && bounds[1] < p / 2) bounds.splice(1, 1); // thin edge piece
+  if (bounds.length > 3 && bounds[bounds.length - 1] === w && w - bounds[bounds.length - 2] < p / 2) bounds.splice(bounds.length - 2, 1);
+  return { n: bounds.length - 1, pitch: p, gaps: bounds.slice(1, -1), bounds };
 }
 
 // Lane boundaries for n lanes across an image, chosen together like the teeth of a comb:
-// the n-1 dividers sit on the palest columns (gaps between lanes) they can, while every
+// the n-1 dividers sit on the palest columns (least band content: gaps between lanes) they can, while every
 // inner lane stays 0.8-1.2x the average lane width and the outer two 0.3-1.6x (ladders
 // are often narrower, and there may be margin at the edges). Comb teeth are evenly
 // spaced, and a faint lane can be as pale as a gap, so the inner limits are tight
@@ -238,7 +271,7 @@ export function countLanes(img, w, h) {
 export function findLanes(img, w, h, n) {
   if (n < 2) return [0, w];
   const pitch = w / n;
-  const s = gaussian1d(columnDarkness(img, w, h), Math.max(2, pitch / 20));
+  const s = gaussian1d(columnContent(img, w, h), Math.max(2, pitch / 20));
   let lo = Infinity, hi = -Infinity;
   for (const v of s) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   const gap = s.map((v) => (hi - v) / (hi - lo || 1)); // 1 = palest column, 0 = darkest
