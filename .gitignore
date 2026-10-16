@@ -9,3 +9,8 @@ __pycache__/
 scoping/samples/*
 !scoping/samples/README.md
 scoping/out/
+
+# Lab notebook exports, papers and session notes stay local too.
+labarchive_examples/
+references/
+HANDOVER.md
