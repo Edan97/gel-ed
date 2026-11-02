@@ -50,7 +50,12 @@ behind it.
    **Show profiles** (off by default,
    for debugging) draws each lane's profile instead, with peaks, saturated peaks and
    shoulders marked, over the shaded columns it's read from (the lane's middle, set by
-   "Centre of lane used"; band rows from there give the masses). Profiles are read from the **edited image** by default; *original
+   "Centre of lane used"; band rows from there give the masses). It also shows each ladder's
+   **calibration plot** under the gel, as in Bio-Rad's tech note 3133: MW (log scale)
+   against distance down the gel, with the ladder bands, the curve masses are read from,
+   and the marked bands at their row corrected for running, with their ± as a bar; dashed,
+   a straight line of best fit through all the ladder bands with its r², as a check on the
+   gel (masses aren't read from it). Profiles are read from the **edited image** by default; *original
    pixels* places each pixel of the loaded image through the edits and counts it once,
    never blended. The edit settings are written into every row of the bands CSV.
    **Ladders**: one card per ladder on the gel (add or remove cards); each card says

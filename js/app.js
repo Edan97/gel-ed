@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=43732a5f";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=43732a5f";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=43732a5f";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=43732a5f";
-import { median } from "./signal.js?v=43732a5f";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=43732a5f";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=43732a5f";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=43732a5f";
-import { log, logOnChange, logText } from "./log.js?v=43732a5f";
-import { LADDERS } from "./ladders.js?v=43732a5f";
-import { drawIcons } from "./icons.js?v=43732a5f";
+import { readImage } from "./image.js?v=f66b246c";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f66b246c";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f66b246c";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure, drawCalibration } from "./draw.js?v=f66b246c";
+import { median } from "./signal.js?v=f66b246c";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=f66b246c";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=f66b246c";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=f66b246c";
+import { log, logOnChange, logText } from "./log.js?v=f66b246c";
+import { LADDERS } from "./ladders.js?v=f66b246c";
+import { drawIcons } from "./icons.js?v=f66b246c";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
@@ -484,6 +484,7 @@ function assignLadders() {
                     created: q.created, kda: null, label: "", alignOk: al.ok };
       if (near) {
         const c = near.calib, yr = toRef(q.y, al);
+        out.ladder = state.ladders.indexOf(near); out.yr = yr;
         if (yr < c.y0) out.label = `>${c.kMax}`;
         else if (yr > c.y1) out.label = `<${c.kMin}`;
         else {
@@ -511,6 +512,29 @@ function assignLadders() {
   for (const r of state.results) for (const b of r.bands) b.ladderBand = false;
   state.marks.forEach((marks, j) => { for (const b of state.results[j].bands) b.ladderBand = marks.some((q) => Math.abs(q.y - b.y) <= 1); });
   drawLadderCards();
+}
+
+// With Show profiles on: each ladder's calibration curve (log kDa against row) with its
+// bands, and the marked bands read from it at their corrected rows (drawCalibration).
+function drawCalibrationPlot() {
+  const box = $("calibration"), on = $("show-profiles").getAttribute("aria-pressed") === "true";
+  const ladders = state.ladders.filter((l) => l.calib);
+  box.hidden = !on || !ladders.length;
+  if (box.hidden) return;
+  const marks = state.pickMarks.flat();
+  const outside = marks.filter((q) => q.ladder !== undefined && q.kda === null).map((q) => `${q.name} (${q.label})`);
+  drawCalibration($("calibration-canvas"), ladders.map((l) => {
+    const m = [...l.markers].sort((a, b) => a.y - b.y);
+    return { name: `Ladder ${state.ladders.indexOf(l) + 1}: ${ladderName(l)}, lane ${l.lane}`, kda: m.map((q) => q.kda),
+             ys: m.map((q) => q.y), est: m.map((q) => !!q.estimated), f: l.calib.f, y0: l.calib.y0, y1: l.calib.y1 };
+  }), ladders.map((l) => marks.filter((q) => q.kda !== null && state.ladders[q.ladder] === l)
+    .map((q) => ({ name: q.name, y: q.yr, kda: q.kda, pm: q.pm || 0 }))),
+  getComputedStyle(document.body).getPropertyValue("--text-primary").trim() || "#222222");
+  $("calibration-note").textContent = "Dots: ladder bands (pale: placed by estimate). Blue: the curve masses are read from, " +
+    "passing through every ladder band (log MW, smooth between neighbouring bands). Dashed: a straight line of best fit " +
+    "through all the ladder bands, as a check on the gel (r² near 1: it ran evenly; bands far off it: the gel bent there " +
+    "or a ladder band is on the wrong size); masses aren't read from it. Red: bands you've marked, at their row corrected for their lane running " +
+    "differently, with their ± as a bar." + (outside.length ? ` Outside the ladder (not plotted): ${outside.join(", ")}.` : "");
 }
 
 // Clicking on a band marks it: the nearest band found in that lane that isn't marked
@@ -652,6 +676,7 @@ function drawResults(active = -1) {
   $("summary").textContent = state.laneNote + `${state.results.length} lanes, ${found} bands found, ${marked} marked. ` +
     `Click a band to mark it, drag to move it, right-click to delete it. Profiles read from the ${from}.`;
   drawFigure();
+  drawCalibrationPlot();
   drawLadderNotes();
   drawAnnotations();
   drawBandNotes();

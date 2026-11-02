@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=43732a5f">
-  <script type="module" src="js/app.js?v=43732a5f"></script>
+  <link rel="stylesheet" href="css/style.css?v=f66b246c">
+  <script type="module" src="js/app.js?v=f66b246c"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="43732a5f">version 42</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="f66b246c">version 43</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -164,6 +164,11 @@
           <div class="view">
             <canvas id="overlay-canvas" class="gel"></canvas>
             <p id="summary" class="hint"></p>
+            <div id="calibration" hidden>
+              <h3 class="sub">Ladder calibration</h3>
+              <canvas id="calibration-canvas" class="calibration"></canvas>
+              <p id="calibration-note" class="hint"></p>
+            </div>
             <h3 class="sub">Ladder</h3>
             <div id="ladder-notes" class="ladder-notes"></div>
             <details class="sub-details" open>

@@ -337,3 +337,124 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
     }
   }
 }
+
+// The ladder's calibration, as in Bio-Rad's tech note 3133 (log MW against migration):
+// one panel per ladder, log10(kDa) up the side (ticks at the ladder's sizes), row down
+// the gel along the bottom. Ladder bands are dots (pale: placed by estimate), the curve
+// through them is the one masses are read from (PCHIP); dashed, a straight line of best
+// fit through all of them (least squares, log10 kDa on row) with its r², as a check on
+// the gel (how straight it ran), not used for masses; marked bands read from this
+// ladder are open circles at their row as corrected for running (toRef), with their ±
+// as a bar. ladders: [{name, kda: [..], ys: [..], est: [bool], f, y0, y1}]; points per
+// ladder: [{name, y, kda, pm}] (in range only). Drawn at the canvas's CSS width.
+export function drawCalibration(canvas, ladders, points, ink = "#222222") {
+  const cssW = canvas.clientWidth || 640;
+  const panelH = Math.round(Math.min(340, cssW * 0.55));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(panelH * ladders.length * dpr);
+  canvas.style.height = `${panelH * ladders.length}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, panelH * ladders.length);
+  const font = (px) => `${px}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ladders.forEach((L, li) => {
+    const oy = li * panelH;
+    const m = { l: 58, r: 16, t: 26, b: 42 };
+    const pw = cssW - m.l - m.r, ph = panelH - m.t - m.b;
+    const lk = L.kda.map((k) => Math.log10(k));
+    const all = lk.concat(points[li].flatMap((p) => [Math.log10(Math.max(1e-6, p.kda - p.pm)), Math.log10(p.kda + p.pm)]));
+    let yLo = Math.min(...all), yHi = Math.max(...all);
+    const padY = (yHi - yLo) * 0.06 || 0.1;
+    yLo -= padY; yHi += padY;
+    let xLo = Math.min(...L.ys), xHi = Math.max(...L.ys);
+    const padX = (xHi - xLo) * 0.04 || 10;
+    xLo -= padX; xHi += padX;
+    const X = (r) => m.l + ((r - xLo) / (xHi - xLo)) * pw;
+    const Y = (v) => oy + m.t + (1 - (v - yLo) / (yHi - yLo)) * ph;
+    // title, axes, ticks at the ladder's sizes
+    ctx.fillStyle = ctx.strokeStyle = ink;
+    ctx.font = font(13);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(L.name, m.l, oy + 16);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(m.l, oy + m.t); ctx.lineTo(m.l, oy + m.t + ph); ctx.lineTo(m.l + pw, oy + m.t + ph);
+    ctx.stroke();
+    ctx.font = font(11);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    let lastTick = -Infinity;
+    L.kda.forEach((k, i) => {
+      const y = Y(lk[i]);
+      ctx.globalAlpha = 0.12;
+      ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(m.l + pw, y); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.moveTo(m.l - 4, y); ctx.lineTo(m.l, y); ctx.stroke();
+      if (Math.abs(y - lastTick) >= 11) { ctx.fillText(String(k), m.l - 6, y); lastTick = y; } // crowded: tick only
+    });
+    ctx.save();
+    ctx.translate(14, oy + m.t + ph / 2); ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center"; ctx.fillText("MW (kDa, log scale)", 0, 0);
+    ctx.restore();
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    const step = 10 ** Math.floor(Math.log10((xHi - xLo) / 4));
+    const nice = [1, 2, 5, 10].map((s) => s * step).find((s) => (xHi - xLo) / s <= 6);
+    for (let r = Math.ceil(xLo / nice) * nice; r <= xHi; r += nice) {
+      ctx.beginPath(); ctx.moveTo(X(r), oy + m.t + ph); ctx.lineTo(X(r), oy + m.t + ph + 4); ctx.stroke();
+      ctx.fillText(String(Math.round(r)), X(r), oy + m.t + ph + 6);
+    }
+    ctx.fillText("Distance down the gel (px from the top of the analysed area)", m.l + pw / 2, oy + m.t + ph + 22);
+    // straight line of best fit (QC): log10 kDa = a + b x row, least squares, with r²
+    const n = L.ys.length, mx = L.ys.reduce((t, v) => t + v, 0) / n, my = lk.reduce((t, v) => t + v, 0) / n;
+    const sxy = L.ys.reduce((t, v, i) => t + (v - mx) * (lk[i] - my), 0), sxx = L.ys.reduce((t, v) => t + (v - mx) ** 2, 0);
+    const b = sxy / sxx, a = my - b * mx;
+    const ssr = lk.reduce((t, v, i) => t + (v - (a + b * L.ys[i])) ** 2, 0), sst = lk.reduce((t, v) => t + (v - my) ** 2, 0);
+    const r2 = 1 - ssr / sst;
+    const clipY = (v) => Math.min(oy + m.t + ph, Math.max(oy + m.t, Y(v)));
+    ctx.save();
+    ctx.strokeStyle = ink; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(X(xLo), clipY(a + b * xLo)); ctx.lineTo(X(xHi), clipY(a + b * xHi)); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = ink; ctx.font = font(12); ctx.textAlign = "right"; ctx.textBaseline = "top";
+    ctx.fillText(`best-fit line: log MW = ${b.toFixed(5)} × distance + ${a.toFixed(3)},  r² = ${r2.toFixed(3)}`, m.l + pw - 4, oy + m.t + 2);
+    // the curve masses are read from
+    ctx.strokeStyle = COLOURS.profile; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let r = L.y0; r <= L.y1; r += Math.max(0.5, (L.y1 - L.y0) / 300)) {
+      const x = X(r), y = Y(L.f(r));
+      r === L.y0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // ladder bands
+    ctx.fillStyle = ink;
+    L.ys.forEach((r, i) => {
+      ctx.globalAlpha = L.est[i] ? 0.35 : 1;
+      ctx.beginPath(); ctx.arc(X(r), Y(lk[i]), 3.5, 0, 2 * Math.PI); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    // marked bands, with their ±
+    ctx.strokeStyle = ctx.fillStyle = COLOURS.peak; ctx.lineWidth = 1.5;
+    ctx.font = font(11); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    const taken = []; // label boxes so far: a label that would overlap one moves up or down
+    const overlaps = (b) => taken.some((t) => b.x0 < t.x1 && t.x0 < b.x1 && b.y0 < t.y1 && t.y0 < b.y1);
+    for (const p of points[li]) {
+      const x = X(p.y), y = Y(Math.log10(p.kda));
+      if (p.pm > 0) {
+        const a = Y(Math.log10(p.kda + p.pm)), b = Y(Math.log10(Math.max(1e-6, p.kda - p.pm)));
+        ctx.beginPath(); ctx.moveTo(x, a); ctx.lineTo(x, b); ctx.moveTo(x - 3, a); ctx.lineTo(x + 3, a);
+        ctx.moveTo(x - 3, b); ctx.lineTo(x + 3, b); ctx.stroke();
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = COLOURS.peak;
+      const tw = ctx.measureText(p.name).width;
+      let box = null;
+      for (const dy of [-8, 8, -20, 20, -32, 32, -44, 44]) {
+        box = { x0: x + 7, x1: x + 7 + tw, y0: y + dy - 6, y1: y + dy + 6 };
+        if (!overlaps(box)) break;
+      }
+      taken.push(box);
+      ctx.fillText(p.name, box.x0, (box.y0 + box.y1) / 2);
+    }
+  });
+}

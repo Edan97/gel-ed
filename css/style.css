@@ -239,3 +239,4 @@ label.row.method-row { justify-content: flex-start; gap: 0.6rem; font-size: 0.9r
 .antibody-row [hidden] { display: none; }
 .ladder-sizes-label { display: block; margin: 0.4rem 0 0.2rem; font-size: 0.9rem; }
 .ladder-sizes { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2rem; resize: vertical; font: inherit; }
+canvas.calibration { display: block; width: 100%; }
