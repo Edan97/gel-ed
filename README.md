@@ -100,7 +100,8 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
    (the leftmost ladder on the left, a second ladder on the right); size labels shrink
    (to 65%) so close ladder bands' labels fit side by side, and only then get a longer
-   line further out. Lane labels shrink (to 60%) to fit over their lanes. Above the gel: lane labels and group
+   line further out; untick **crowded sizes** to leave those out instead (going down the
+   side, a size too close to the last one shown is skipped, and the rest grow to fit). Lane labels shrink (to 60%) to fit over their lanes. Above the gel: lane labels and group
    bars with names (groups that don't overlap share a row); each can be switched off. Download as PNG
    or copy to the clipboard. The **figure caption** underneath is written from the
    method, the ladder and lane annotations (label, annotation and volume where filled in; if two

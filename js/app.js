@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=cecb406a";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=cecb406a";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=cecb406a";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=cecb406a";
-import { median } from "./signal.js?v=cecb406a";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=cecb406a";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=cecb406a";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=cecb406a";
-import { log, logOnChange, logText } from "./log.js?v=cecb406a";
-import { LADDERS } from "./ladders.js?v=cecb406a";
-import { drawIcons } from "./icons.js?v=cecb406a";
+import { readImage } from "./image.js?v=43732a5f";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=43732a5f";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=43732a5f";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=43732a5f";
+import { median } from "./signal.js?v=43732a5f";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=43732a5f";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=43732a5f";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=43732a5f";
+import { log, logOnChange, logText } from "./log.js?v=43732a5f";
+import { LADDERS } from "./ladders.js?v=43732a5f";
+import { drawIcons } from "./icons.js?v=43732a5f";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
@@ -1146,14 +1146,14 @@ function drawFigure() {
     (rows[level] = rows[level] || []).push(g);
     return { x0: pairs[g.from - 1][0], x1: pairs[g.to - 1][1], name: g.name, level };
   });
-  const show = { ids: $("show-ids").checked, notes: false, groups: $("show-groups").checked };
+  const show = { ids: $("show-ids").checked, notes: false, groups: $("show-groups").checked, crowded: $("show-crowded").checked };
   renderFigure($("figure-canvas"), grey, w, h, side(placed[0]), placed.length > 1 ? side(placed[placed.length - 1]) : null,
                { lanes, groups, show });
   $("figure-note").textContent = placed.length > 2
     ? `${placed.length} ladders: only the leftmost and rightmost are marked on the figure.` : "";
 }
 
-for (const id of ["show-ids", "show-groups"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
+for (const id of ["show-ids", "show-groups", "show-crowded"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
 
 $("fig-download").addEventListener("click", () => {
   log("download", { what: "figure" });

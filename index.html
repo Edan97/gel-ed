@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=cecb406a">
-  <script type="module" src="js/app.js?v=cecb406a"></script>
+  <link rel="stylesheet" href="css/style.css?v=43732a5f">
+  <script type="module" src="js/app.js?v=43732a5f"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="cecb406a">version 41</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="43732a5f">version 42</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -211,7 +211,8 @@
         </div>
         <p class="fig-show">Show:
           <label><input type="checkbox" id="show-ids" checked> lane labels</label>
-          <label><input type="checkbox" id="show-groups" checked> groups</label></p>
+          <label><input type="checkbox" id="show-groups" checked> groups</label>
+          <label title="Untick to leave out ladder sizes too close to the one above to fit beside it (they'd otherwise sit further out on a longer line)"><input type="checkbox" id="show-crowded" checked> crowded sizes</label></p>
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>
         <label class="caption-label" for="caption">Figure caption</label>

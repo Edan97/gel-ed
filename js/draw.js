@@ -183,18 +183,33 @@ export function drawDividers(ctx, bounds, top, height, px, active = -1) {
 // Above the gel (top, optional): per lane {x0, x1, id, text} (columns of the gel) drawn
 // as lane labels, then annotations (tilted 45° if any is wider than its lane), then
 // groups {x0, x1, name, level}: a bar over their lanes with the name above, one row per
-// level. top.show = {ids, notes, groups} switches rows on and off.
+// level. top.show = {ids, notes, groups} switches rows on and off; show.crowded = false
+// leaves out the size labels that would need a longer line (going down each side, a
+// label too close to the last one kept), and the rest are sized for the gaps left.
 // Drawn at the gel's own resolution; text and lines scale with its height.
 export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const base = Math.max(14, Math.round(h / 30));
   const fs0 = Math.round(1.3 * base);                    // full size for size labels and "MW (kDa)"
+  const show = (top && top.show) || {};
   // size labels shrink (to 65% at most) so the closest two ladder bands' labels fit side
   // by side; only if that isn't enough does a label move out onto a longer line
-  const gaps = [left, right].filter(Boolean).flatMap((m) => {
-    const ys = m.map((q) => q.y).sort((a, b) => a - b);
-    return ys.slice(1).map((y, i) => y - ys[i]);
-  });
-  const fs = gaps.length ? Math.max(Math.round(0.65 * fs0), Math.min(fs0, Math.floor(Math.min(...gaps) / 1.15))) : fs0;
+  const fitSize = (sides) => {
+    const gaps = sides.filter(Boolean).flatMap((m) => {
+      const ys = m.map((q) => q.y).sort((a, b) => a - b);
+      return ys.slice(1).map((y, i) => y - ys[i]);
+    });
+    return gaps.length ? Math.max(Math.round(0.65 * fs0), Math.min(fs0, Math.floor(Math.min(...gaps) / 1.15))) : fs0;
+  };
+  let fs = fitSize([left, right]);
+  if (show.crowded === false) { // drop the labels that would go out a level, then size for what's left
+    const thin = (m) => {
+      if (!m) return m;
+      let last = -Infinity;
+      return [...m].sort((a, b) => a.y - b.y).filter((q) => (q.y - last >= fs * 1.15 ? ((last = q.y), true) : false));
+    };
+    left = thin(left); right = thin(right);
+    fs = fitSize([left, right]);
+  }
   const lw = 2 * Math.max(1, base / 10);                 // lines and outline
   const tick = Math.round(base * 1.2), gap = Math.round(fs * 0.25), sep = fs * 1.15; // sep: closest labels on one level
   const ctx = canvas.getContext("2d");
@@ -223,7 +238,6 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   let mr = R ? R.width : Math.round(fs * 0.6);
   // rows above the gel, bottom (next to the gel) to top
   const afs = Math.round(fs0 * 0.8), afont = `${afs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-  const show = (top && top.show) || {};
   const lanes = (top && top.lanes) || [], groups = (top && top.groups) || [];
   // lane labels: one or more lines (typed with Enter), shrunk (to 60% at most) so the
   // widest line fits over its lane
