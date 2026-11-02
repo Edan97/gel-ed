@@ -2,17 +2,17 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=ebef8f54";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=ebef8f54";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=ebef8f54";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=ebef8f54";
-import { median } from "./signal.js?v=ebef8f54";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=ebef8f54";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=ebef8f54";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=ebef8f54";
-import { log, logOnChange, logText } from "./log.js?v=ebef8f54";
-import { LADDERS } from "./ladders.js?v=ebef8f54";
-import { drawIcons } from "./icons.js?v=ebef8f54";
+import { readImage } from "./image.js?v=cecb406a";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=cecb406a";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=cecb406a";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure } from "./draw.js?v=cecb406a";
+import { median } from "./signal.js?v=cecb406a";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=cecb406a";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=cecb406a";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=cecb406a";
+import { log, logOnChange, logText } from "./log.js?v=cecb406a";
+import { LADDERS } from "./ladders.js?v=cecb406a";
+import { drawIcons } from "./icons.js?v=cecb406a";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
@@ -285,11 +285,14 @@ function laneProfiles() {
 
 function computeBands() {
   const opts = bandOptions();
-  state.results = laneProfiles().map((p) => bandsFromProfile(p.mean, p.black, opts));
+  state.profiles = laneProfiles();
+  state.results = state.profiles.map((p) => bandsFromProfile(p.mean, p.black, opts));
   state.aligns = {};
   // each band's horizontal middle (where it's marked), measured on the edited image
   const { grey, w, h } = state.cropImg;
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) => { b.x = bandCentre(grey, w, h, s, e, b.y); }));
+  state.baseResults = [...state.results];
+  state.resultsId = (state.resultsId || 0) + 1; // ladder lanes found automatically are found again
   assignLadders();
 }
 
@@ -314,21 +317,88 @@ function spreadAt(c, y) {
   return spread[i] + ((spread[i + 1] - spread[i]) * (y - ys[i])) / (ys[i + 1] - ys[i]);
 }
 
+// A ladder is bands from top to bottom, so its own noise estimate (wobble around a
+// smoothed copy) is mostly bands, and can come out several times too high, hiding
+// half its bands (gel_04: 0.065 against 0.006 for the other lanes; 7 of 15 found).
+// When a ladder lane has fewer bands than sizes, it's read again with its noise
+// capped at the gel's median lane noise (band_peaks.find_bands noise_cap). Returns
+// that lane's results (the usual ones when the cap isn't needed or finds no more).
+function ladderCandidates(i, sizes) {
+  const base = state.baseResults[i];
+  const gelNoise = median(state.baseResults.map((r) => r.noise));
+  if (base.bands.length >= sizes.length || !(base.noise > gelNoise)) return base;
+  const r = bandsFromProfile(state.profiles[i].mean, state.profiles[i].black, { ...bandOptions(), noiseCap: gelNoise });
+  if (r.bands.length <= base.bands.length) return base;
+  const { grey, w, h } = state.cropImg;
+  const [s, e] = lanePairs()[i];
+  r.bands.forEach((b) => { b.x = bandCentre(grey, w, h, s, e, b.y); });
+  return r;
+}
+
+// The ladder's bands in lane i as the ladder would pick them (pickLadderBands).
+function ladderPicks(i, sizes) {
+  const { grey, w, h } = state.cropImg;
+  const [s, e] = lanePairs()[i];
+  const bands = ladderCandidates(i, sizes).bands;
+  const bg = laneBackground(grey, w, h, s, e);
+  const solidity = bands.map((b) => bandSolidity(grey, w, h, s, e, b.y, bg));
+  return { picks: pickLadderBands(bands, solidity, sizes),
+           solid: bands.filter((b, k) => b.kind === "peak" && solidity[k] >= 0.85).length };
+}
+
+// Which lane is this ladder in? (until the user chooses one on its card) The lane whose
+// picked bands fit the ladder's sizes best: mean over consecutive picks of (ln of the
+// ratio of the two slopes of log10(kDa) against row)^2, as pickLadderBands, plus
+// 2 x the share of sizes with no solid band (a sample lane with a few evenly spaced
+// bands can fit well; a ladder has a band for most sizes). Lanes holding another ladder
+// are skipped. On every sample the ladder lane wins clearly (gel_04, ladder in lane 8
+// of 15: 0.19 against 1.9 for the next best; gel_02: 0.53 against 1.39).
+// scoping/ladder_pick.py find_ladder_lane does the same.
+function autoLadderLane(lad) {
+  const sizes = ladderSizes(lad);
+  const taken = state.ladders.filter((l) => l !== lad && !l.auto).map((l) => l.lane)
+    .concat(state.ladders.slice(0, state.ladders.indexOf(lad)).filter((l) => l.auto).map((l) => l.lane));
+  const key = `${state.resultsId}|${sizes.join(",")}|${taken.join(",")}`;
+  if (lad.autoKey === key) return;
+  lad.autoKey = key;
+  if (sizes.length < 3) return;
+  const lk = sizes.map((k) => Math.log10(k));
+  let best = Infinity, at = lad.lane;
+  lanePairs().forEach((_, i) => {
+    if (taken.includes(i + 1)) return;
+    const { picks, solid } = ladderPicks(i, sizes);
+    if (picks.length < 3) return;
+    let c = 0;
+    for (let k = 2; k < picks.length; k++) {
+      const s1 = (lk[k - 1] - lk[k - 2]) / (picks[k - 1].y - picks[k - 2].y);
+      const s2 = (lk[k] - lk[k - 1]) / (picks[k].y - picks[k - 1].y);
+      c += Math.log(s2 / s1) ** 2;
+    }
+    const score = c / (picks.length - 2) + 2 * (1 - Math.min(solid, sizes.length) / sizes.length);
+    if (score < best) { best = score; at = i + 1; }
+  });
+  if (at !== lad.lane) { lad.lane = at; lad.markers = null; }
+  log("ladder-lane-auto", { ladder: state.ladders.indexOf(lad) + 1, lane: at, score: +best.toFixed(2) });
+}
+
 // Ladder markers (picked automatically unless moved by hand), each ladder's calibration
 // (log10 kDa against row, point-to-point PCHIP as in Python), and every other band's mass
 // from the nearest ladder. No correction for lanes running differently yet.
 function assignLadders() {
   const { grey, w, h } = state.cropImg;
   const lanes = lanePairs();
+  state.results = [...state.baseResults];
   for (const lad of state.ladders) {
     lad.lane = Math.min(Math.max(1, lad.lane), lanes.length);
+    if (lad.auto && !lad.manual) autoLadderLane(lad);
+    state.results[lad.lane - 1] = ladderCandidates(lad.lane - 1, ladderSizes(lad));
+  }
+  for (const lad of state.ladders) {
     const sizes = ladderSizes(lad);
     const [s, e] = lanes[lad.lane - 1];
     if (!lad.manual || !lad.markers) {
       lad.offGel = [];
-      const bands = state.results[lad.lane - 1].bands;
-      const bg = laneBackground(grey, w, h, s, e);
-      const chosen = pickLadderBands(bands, bands.map((b) => bandSolidity(grey, w, h, s, e, b.y, bg)), sizes.length);
+      const chosen = ladderPicks(lad.lane - 1, sizes).picks;
       lad.markers = chosen.map((b, i) => ({ y: b.y, kda: sizes[i] }));
       // sizes with no band found still get a marker, so they can be dragged into place:
       // at the row a straight line through log10(kDa) against row of the placed ones gives
@@ -756,14 +826,19 @@ function drawLadderCards() {
     });
     const laneSelect = card.querySelector(".ladder-lane");
     const nLanes = state.bounds ? lanePairs().length : 1;
+    laneSelect.add(new Option(state.results ? `Auto (lane ${ladder.lane})` : "Auto", "auto"));
     for (let k = 1; k <= nLanes; k++) laneSelect.add(new Option(String(k), String(k)));
-    laneSelect.value = String(Math.min(ladder.lane, nLanes));
+    laneSelect.value = ladder.auto ? "auto" : String(Math.min(ladder.lane, nLanes));
     card.querySelector(".ladder-note").textContent = ladder.note || "";
     const changed = () => { ladder.manual = false; ladder.markers = null; if (state.results) { assignLadders(); drawResults(); } };
     select.addEventListener("change", () => { ladder.type = select.value; ladder.sizes = presetSizes(ladder.type);
       log("ladder-type", { ladder: i + 1, type: ladder.type }); changed(); drawLadderCards(); drawLadderNotes(); updateCaption();
       if (ladder.type === "custom") $("ladder-cards").children[i].querySelector(".ladder-sizes").focus(); });
-    laneSelect.addEventListener("change", () => { ladder.lane = parseInt(laneSelect.value, 10); delete ladder.home; log("ladder-lane", { ladder: i + 1, lane: ladder.lane }); changed(); });
+    laneSelect.addEventListener("change", () => {
+      ladder.auto = laneSelect.value === "auto";
+      if (ladder.auto) delete ladder.autoKey; else ladder.lane = parseInt(laneSelect.value, 10);
+      delete ladder.home; log("ladder-lane", { ladder: i + 1, lane: ladder.auto ? "auto" : ladder.lane }); changed(); drawLadderCards();
+    });
     card.querySelector(".ladder-remove").addEventListener("click", () => {
       state.ladders.splice(i, 1);
       if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
@@ -772,12 +847,13 @@ function drawLadderCards() {
   });
 }
 
-const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], sizes: presetSizes(Object.keys(LADDERS)[0]), lane, markers: null, manual: false, note: "" });
+// lane: where it starts; auto: the page finds its lane (autoLadderLane) until the user chooses one
+const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], sizes: presetSizes(Object.keys(LADDERS)[0]), lane, auto: true, markers: null, manual: false, note: "" });
 $("add-ladder").addEventListener("click", () => {
   state.ladders.push(newLadder(state.bounds ? lanePairs().length : 1)); // a second ladder: often the last lane
   if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
 });
-state.ladders.push(newLadder(1)); // most gels have one ladder, in the first lane
+state.ladders.push(newLadder(1)); // its lane is found once bands are
 drawLadderCards();
 
 // ---------- ladder notes, lane annotations and groups ----------

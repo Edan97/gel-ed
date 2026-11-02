@@ -51,8 +51,13 @@ from ladder_centreline import extract, load  # noqa: E402
 
 
 def find_bands(region, row_start=0, core=0.25, smooth=1.0, noise_rows=61, k=6.0, sep=5,
-               sat_level=0.03, sat_frac=0.2, centre=None):
+               sat_level=0.03, sat_frac=0.2, centre=None, noise_cap=None):
     """Bands in one lane region (rows x columns, 0 black - 1 white).
+
+    noise_cap: optional upper limit on the noise. Ladder lanes use the gel's typical lane
+    noise here: a ladder is bands from top to bottom, so its own wobble is mostly bands
+    and its noise comes out several times too high (gel_04: 0.065 against 0.006 for the
+    other lanes), hiding half its bands.
 
     centre: optional x(row) in region columns (row = image row). The strip of central
     columns, same width, then follows it row by row (linear interpolation between
@@ -81,6 +86,8 @@ def find_bands(region, row_start=0, core=0.25, smooth=1.0, noise_rows=61, k=6.0,
     prof = ndimage.gaussian_filter1d(dark.mean(axis=1), smooth)
     wobble = prof - ndimage.gaussian_filter1d(prof, noise_rows / 6)  # for the noise estimate only
     noise = 1.4826 * np.median(np.abs(wobble - np.median(wobble)))
+    if noise_cap is not None:
+        noise = min(noise, noise_cap)
     saturated = (centre <= sat_level).mean(axis=1) >= sat_frac
     sat_near = ndimage.binary_dilation(saturated, iterations=sep)
 

@@ -1,6 +1,6 @@
 // Ladder band picking and mass calibration.
 
-import { gaussian1d, median } from "./signal.js?v=ebef8f54";
+import { gaussian1d, median } from "./signal.js?v=cecb406a";
 
 // Monotone piecewise-cubic interpolation, scipy.interpolate.PchipInterpolator's formulas
 // (the Python mass calibration uses it). xs strictly increasing. Returns f(x); outside
@@ -72,12 +72,70 @@ export function laneBackground(img, w, h, start, end) {
   return bg;
 }
 
-// Pick which detected bands are the ladder's: the n most solid (ties: the stronger),
-// returned top to bottom. Fewer candidates than sizes: all of them.
-export function pickLadderBands(bands, solidity, n) {
+// Pick which detected bands are the ladder's (sizes in kDa, largest first), returned top
+// to bottom. Fewer candidates than sizes: all of them.
+// 1. Solid peaks only: shoulders and bands less solid than 0.85 go (a smudge with a bright
+//    spot: 0.78 on gel_02; real bands 0.94-1.00), as long as at least as many remain as
+//    there are sizes. If too few remain: the most solid (ties: the stronger), as before.
+// 2. Still too many (gel_04: a well bottom and 15 real bands for 15 sizes): the set whose
+//    spacing fits the sizes best. Down a ladder log10(kDa) changes smoothly with row, so
+//    for each three consecutive picks the slope between the first two and the last two
+//    should be alike: cost (ln of their ratio)^2, plus, for each band left out, its
+//    strength relative to the median candidate (at most 2), so strong bands aren't
+//    skipped to make the spacing look tidier. Dynamic programming over (size, band,
+//    band picked for the size above), so every choice is considered.
+export function pickLadderBands(bands, solidity, sizes) {
+  const n = sizes.length;
   const ranked = bands.map((b, i) => ({ b, s: solidity[i] }))
     .sort((p, q) => (Math.abs(q.s - p.s) > 0.02 ? q.s - p.s : q.b.snr - p.b.snr));
-  return ranked.slice(0, n).map((p) => p.b).sort((p, q) => p.y - q.y);
+  const solid = ranked.filter((p) => p.s >= 0.85 && p.b.kind === "peak").map((p) => p.b);
+  const byRow = (a) => a.sort((p, q) => p.y - q.y);
+  if (solid.length < n) return byRow(ranked.slice(0, n).map((p) => p.b));
+  const c = byRow(solid);
+  return n < 3 || c.length === n ? c.slice(0, n) : spacingFit(c, sizes);
+}
+
+function spacingFit(c, sizes) {
+  const m = c.length, n = sizes.length;
+  const lk = sizes.map((k) => Math.log10(k));
+  const mid = median(c.map((b) => b.snr)) || 1;
+  const cum = [0];
+  for (const b of c) cum.push(cum[cum.length - 1] + Math.min(b.snr / mid, 2));
+  const skip = (a, b) => cum[b] - cum[a]; // leaving out candidates a..b-1
+  // cost[i][j][p]: sizes 0..i placed, size i on candidate j, size i-1 on candidate p
+  const idx = (j, p) => j * m + p;
+  let cost = new Float64Array(m * m).fill(Infinity);
+  const back = [];
+  for (let j = 1; j < m; j++) for (let p = 0; p < j; p++) cost[idx(j, p)] = skip(0, p) + skip(p + 1, j);
+  for (let i = 2; i < n; i++) {
+    const next = new Float64Array(m * m).fill(Infinity), from = new Int32Array(m * m).fill(-1);
+    for (let j = i; j < m - (n - 1 - i); j++) {
+      for (let p = i - 1; p < j; p++) {
+        const s2 = (lk[i] - lk[i - 1]) / (c[j].y - c[p].y);
+        for (let q = i - 2; q < p; q++) {
+          const prev = cost[idx(p, q)];
+          if (prev === Infinity) continue;
+          const s1 = (lk[i - 1] - lk[i - 2]) / (c[p].y - c[q].y);
+          const v = prev + Math.log(s2 / s1) ** 2 + skip(p + 1, j);
+          if (v < next[idx(j, p)]) { next[idx(j, p)] = v; from[idx(j, p)] = q; }
+        }
+      }
+    }
+    cost = next;
+    back.push(from);
+  }
+  let best = Infinity, bj = -1, bp = -1;
+  for (let j = 1; j < m; j++) for (let p = 0; p < j; p++) {
+    const v = cost[idx(j, p)] + skip(j + 1, m);
+    if (v < best) { best = v; bj = j; bp = p; }
+  }
+  const out = [bj, bp];
+  for (let i = n - 1; i >= 2; i--) {
+    const q = back[i - 2][idx(bj, bp)];
+    out.push(q);
+    bj = bp; bp = q;
+  }
+  return out.reverse().map((k) => c[k]);
 }
 
 // Calibration uncertainty, as scoping/band_masses.py: leave each interior ladder band out,

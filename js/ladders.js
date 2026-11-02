@@ -25,4 +25,8 @@ export const LADDERS = {
     name: "Precision Plus Protein™ Dual Color Standards",
     kda: [250, 150, 100, 75, 50, 37, 25, 20, 15, 10],
   },
+  "benchmark": {
+    name: "BenchMark™ Protein Ladder",
+    kda: [220, 160, 120, 100, 90, 80, 70, 60, 50, 40, 30, 25, 20, 15, 10],
+  },
 };

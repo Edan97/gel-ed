@@ -56,9 +56,16 @@ behind it.
    **Ladders**: one card per ladder on the gel (add or remove cards); each card says
    which ladder it is (from `js/ladders.js`, or Custom), its sizes in kDa (pre-filled
    from the ladder, editable: delete sizes that ran off; Custom starts empty)
-   and which lane it's in. The ladder's bands are picked
-   automatically: as many as the ladder has sizes, keeping the most solid bands (a
-   smudge or a band with a bright spot is less solid). They're shown as filled circles
+   and which lane it's in. The lane starts as **Auto**: the page picks the lane whose
+   bands fit the ladder's sizes best (evenly changing spacing, a band for most sizes),
+   wherever the ladder is on the gel, and shows it as "Auto (lane 8)". Choosing a lane
+   number fixes it; choosing Auto again hands it back. The ladder's bands are picked
+   automatically: as many as the ladder has sizes, keeping solid bands (a smudge or a
+   band with a bright spot is less solid) and, when there are more than sizes, the set
+   whose spacing best fits the sizes (log kDa changes smoothly down a ladder). A ladder
+   lane is bands from top to bottom, which makes its own noise estimate too high; if too
+   few bands are found there, it's read again with the gel's typical lane noise
+   (`scoping/ladder_pick.py` does the same in Python). They're shown as filled circles
    labelled with their size. **To correct one, drag it from the wrong band to the right
    one**: it snaps to the nearest band found (or stays where dropped), dropping it on
    another size swaps the two, and all masses update. Masses come from the nearest

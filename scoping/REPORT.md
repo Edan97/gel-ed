@@ -302,7 +302,29 @@ editing and the band-finding overlay:
   as many as the ladder has sizes, ties broken by strength. On gel_02 this drops the
   smudge at row ~789 (solidity 0.78; real bands 0.94–1.00) and leaves the 9 picked by
   eye. Strength, thickness and left/right agreement alone don't separate it (faint real
-  bands at the bottom score as low). Confirmation is by hand: ladder bands are filled
+  bands at the bottom score as low).
+  gel_04 (BenchMark, 15 bands, ladder in lane 8 of 15) broke this twice. (1) The
+  ladder lane's noise estimate (wobble around a smoothed copy) is mostly its own
+  bands: 0.065 against a median of 0.006 for the other lanes, so only 7 of 15 bands
+  passed 6× noise. When a ladder lane has fewer bands than sizes it is read again with
+  its noise capped at the gel's median lane noise (`find_bands(noise_cap=)`): 18
+  candidates, all 15 real. Only then, so gel_02 and Inna's blot (which already had
+  enough) are untouched. (2) The 15 most solid then included the well bottom (row 27,
+  solidity 1.0) and lost a real band. Picking is now: drop shoulders and bands below
+  0.85 solidity while enough remain (gel_02: leaves exactly its 9, as before); if more
+  candidates than sizes are left, choose the set whose spacing fits the sizes —
+  log10(kDa) changes smoothly with row, so consecutive slopes should be alike (cost
+  (ln ratio)², plus each left-out band's strength relative to the median, at most 2),
+  by dynamic programming. gel_04: all 15 on the right rows, unchanged for skip weights
+  0.5–2. Smoothness alone is not enough: on gel_02 the 789 smudge fits MagicMark's
+  spacing better than the real band at 869, which is why solidity filters first.
+  Ladder lane (until the user chooses one): each lane is picked as if it were the
+  ladder and scored by its mean (ln slope ratio)² over consecutive picks plus 2 × the
+  share of sizes with no solid band (without that term gel_03's lane 7, five evenly
+  spaced bands, scores 0.26 against the ladder's 0.29). Ladder lane wins on every
+  sample: gel_04 lane 8 0.19 (next 1.9), gel_02 lane 1 0.53 (next 1.39), Inna lane 1,
+  gel_03 lane 1, gel_01 lane 1.
+  Python twin `scoping/ladder_pick.py` (`--lane auto`), four checks in `run_all.py`. Confirmation is by hand: ladder bands are filled
   circles labelled with their size, dragged from a wrong band to the right one. Masses
   are read point-to-point from the nearest ladder (JS PCHIP matches scipy to 1e-6).
 - Not in the web page yet: correction for lanes running differently, centre-lines,

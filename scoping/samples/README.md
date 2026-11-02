@@ -8,6 +8,7 @@ so they are kept out of git (see `.gitignore`).
 | `210826_Het_Mut_IVP_Opt_2.tif` | First sample: 1710×1061 RGB TIFF |
 | `gel_02.jpg` | Main sample: 2000×991 JPEG western, ladder + 12 lanes, labels above the lanes |
 | `gel_02_lanes.csv` | Column range of each lane in `gel_02.jpg`: `name,start,end` |
+| `gel_04.jpg` | 980×754 JPEG SDS-PAGE, 15 lanes, BenchMark™ Protein Ladder (15 bands) in the middle lane (8) |
 
 Any gel works with the individual scripts; `run_all.py` and its checks are written for
-these two.
+these.

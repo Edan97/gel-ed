@@ -29,6 +29,8 @@ SAMPLES = SCOPING / "samples"
 GEL01 = SAMPLES / "210826_Het_Mut_IVP_Opt_2.tif"
 GEL02 = SAMPLES / "gel_02.jpg"
 LANES02 = SAMPLES / "gel_02_lanes.csv"
+GEL04 = SAMPLES / "gel_04.jpg"
+BENCHMARK = ["220", "160", "120", "100", "90", "80", "70", "60", "50", "40", "30", "25", "20", "15", "10"]
 
 STEPS = [
     ("Standardise both samples to 16-bit greyscale PNG",
@@ -57,6 +59,10 @@ STEPS = [
     ("Auto-straighten: recovering known tilts on gel_02", ["scoping/auto_straighten.py", GEL02]),
     ("Lane counting (as the web page)",
      ["scoping/count_lanes.py", GEL02, "--lanes", LANES02, "--out", OUT / "gel_02_count_lanes.csv"]),
+    ("Ladder lane and picking (as the web page): gel_04, BenchMark ladder in the middle lane",
+     ["scoping/ladder_pick.py", GEL04, "--lane", "auto", "--kda", *BENCHMARK, "--out", OUT / "gel_04_ladder.csv"]),
+    ("", ["scoping/ladder_pick.py", GEL02, "--lane", "auto", "--kda", "220", "120", "100", "80", "60", "50", "40", "30", "20",
+          "--out", OUT / "gel_02_ladder_pick.csv"]),
     ("Reference for the browser tests (open tests/parity.html and tests/straighten.html)",
      ["scoping/js_reference.py", GEL02, "--lanes", LANES02]),
 ]
@@ -127,6 +133,19 @@ def checks():
     out.append(("Lane counting: gel_02 has 13 lanes, dividers within 20 px of the hand-placed gaps",
                 len(counted) == 13 and worst <= 20, f"{len(counted)} lanes, worst divider {worst:.0f} px"))
 
+    rows = read_csv(OUT / "gel_04_ladder.csv")
+    picks = [(int(r["row"]), float(r["kDa"])) for r in rows]
+    out.append(("Ladder lane: found automatically on gel_04 (lane 8 of 15, the middle)",
+                rows[0]["lane"] == "8", f"lane {rows[0]['lane']}"))
+    expect = [126, 152, 181, 204, 219, 237, 260, 288, 329, 379, 441, 498, 518, 572, 633]  # read off the image
+    out.append(("Ladder picking: gel_04 gets all 15 BenchMark bands on the right rows (noise cap, then spacing)",
+                [r for r, _ in picks] == expect, " ".join(f"{r}:{k:g}" for r, k in picks)))
+    rows = read_csv(OUT / "gel_02_ladder_pick.csv")
+    picks = [int(r["row"]) for r in rows]
+    out.append(("Ladder lane: found automatically on gel_02 (lane 1)", rows[0]["lane"] == "1", f"lane {rows[0]['lane']}"))
+    out.append(("Ladder picking: gel_02 still leaves out the smudge at row 789 (solidity 0.78)",
+                len(picks) == 9 and 789 not in picks, " ".join(map(str, picks))))
+
     peaks = read_csv(OUT / "gel_02_lanes_summary.csv")
     lad = [r for r in peaks if r["lane_no"] == "1" and r["method"] == "centroid"][0]
     out.append(("Centre-lines: ladder lean between 2.5 and 3.5 degrees",
@@ -135,7 +154,7 @@ def checks():
 
 
 def main():
-    missing = [p.name for p in (GEL01, GEL02, LANES02) if not p.exists()]
+    missing = [p.name for p in (GEL01, GEL02, LANES02, GEL04) if not p.exists()]
     if missing:
         sys.exit(f"Missing sample files in {SAMPLES.relative_to(ROOT)}/: {', '.join(missing)} "
                  f"(see scoping/samples/README.md)")

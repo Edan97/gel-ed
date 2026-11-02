@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=ebef8f54";
+import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=cecb406a";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -60,7 +60,8 @@ export function bandsFromProfile(meanIn, blackFrac, opts = {}) {
 
   // 2. noise from the wobble around a smoothed copy (thresholds only, never subtracted)
   const smoothCopy = gaussian1d(prof, o.noiseRows / 6);
-  const noise = mad(prof.map((v, i) => v - smoothCopy[i]));
+  let noise = mad(prof.map((v, i) => v - smoothCopy[i]));
+  if (o.noiseCap !== undefined) noise = Math.min(noise, o.noiseCap); // ladder lanes short of bands: see assignLadders
 
   // 5. saturated rows (enough near-black pixels), widened by sep
   const satNear = new Uint8Array(h);
