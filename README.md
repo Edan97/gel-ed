@@ -25,7 +25,8 @@ behind it.
      is no taller than most of the window (as is the lanes-and-bands view).
    - The whole image is analysed; blank corners left by rotating contribute nothing. Drag
      the rectangle's corners and edges to leave something out (e.g. labels above the
-     lanes); everything outside it is greyed out.
+     lanes); everything outside it is greyed out. Lanes already placed stay where they are
+     on the gel (lanes cut off go; what's left at the edges is empty space).
 3. **Lanes and bands**: lanes are numbered 1, 2, 3, …; bands are named by lane number
    and a letter counted from the top of the lane: 1.A, 1.B, … (AA, AB, … after Z), in
    the "band" column of the bands CSV.
@@ -86,32 +87,65 @@ lane's centre is used, smoothing, and the noise window. Defaults match the Pytho
 
    **Method** (for the caption): SDS-PAGE with its stain (the default: Coomassie), or
    western blot with one or more antibodies (chosen from `js/antibodies.js` or typed in).
-   **Ladder** (under the overlay): the selected ladder's name (editable) and its
-   volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
+   How the gel was run (gel, wells, running buffer, sample heating, voltage and time) and,
+   for western blots, the transfer (membrane, transfer conditions, Ponceau S check,
+   blocking, detection): each field filled in goes into the caption. They start at what
+   the lab's notebooks use most (NuPAGE 4–12% Bis-Tris in MES, 95 °C for 5 min, 180 V for
+   35 min; nitrocellulose, 100 V for 1 h in the cold room, Ponceau S, 5% BSA in TBS, ECL);
+   wells start blank.
+   **Ladder** (under the overlay): the selected ladder's name with its supplier and
+   catalogue number (editable) and its volume. **Lane annotations** (collapsible): per sample lane a label (pre-filled
    with the lane number, used on the figure; Enter starts a new line, e.g. genotype over
    dilution), an annotation and a volume (µL), and one
    column per **group** (e.g. non-reducing / reducing): name it at the top, then click
    a lane's cell and drag to cover a continuous run of lanes. Pasting several lines
    into a lane box fills that lane and the ones below (tab-separated columns from a
-   spreadsheet fill across label → annotation → volume). **Band annotations**
+   spreadsheet fill across label → annotation → volume). **Sample preparation**
+   (collapsed to start with): per sample lane a concentration (mg/mL), the amount to load (µg) and a
+   **Reduced** tick (lanes in a group named Reduced or R start ticked); every tube is made
+   up to the total (20 µL) with loading dye (4×, so 5 µL) and, in reduced lanes, the
+   reducing agent (2 µL 1 M DTT); the sample volume is amount ÷
+   concentration and the diluent (PBS) makes up the rest. With no amount, the sample fills
+   what's left (e.g. 15 µL non-reduced, 13 µL reduced). Amounts that don't fit are
+   flagged with the most that does. The amounts go in the caption ("5 µg, 20 µL").
+   **Band annotations**
    (collapsible, appears once a band is marked): each marked band's estimated MW ±
    uncertainty and an annotation, also in the bands CSV. Masses are corrected for each
    lane running differently from the lane next to its ladder (a shift and slight
    stretch matched on the lane profiles, as in the Python version); the ± combines band
    position, the band's own width (FWHM/2.355) and the ladder bands' width, the leftover
    mismatch after that correction, and ladder calibration.
-   Lanes that match poorly are flagged "?". Ladder sizes with no band found are placed by estimate
+   Where a lane matches poorly (correlation under 0.5) the correction itself is in doubt,
+   so the ± also covers the whole shift (from where the band sits to where it's read), at
+   least the worst mismatch seen; there's no separate flag. Ladder sizes with no band found are placed by estimate
    (pale) so they can be dragged onto the right band.
 4. **Figure**: the analysed gel, outlined, with the ladder sizes marked down the side under "MW (kDa)"
    (the leftmost ladder on the left, a second ladder on the right); size labels shrink
    (to 65%) so close ladder bands' labels fit side by side, and only then get a longer
    line further out; untick **crowded sizes** to leave those out instead (going down the
    side, a size too close to the last one shown is skipped, and the rest grow to fit). Lane labels shrink (to 60%) to fit over their lanes. Above the gel: lane labels and group
-   bars with names (groups that don't overlap share a row); each can be switched off. Download as PNG
-   or copy to the clipboard. The **figure caption** underneath is written from the
+   bars with names (groups that don't overlap share a row); each can be switched off.
+   **lane list** numbers the lanes above the gel and lists them beside it ("2. 9D9-mIgG1
+   NR"), for long sample names; **ladder names** writes each ladder's short name above its
+   lane (upright if it doesn't fit across). **ladder sizes** switches the MW scale off.
+   **marked bands** puts a red arrowhead and the band's name (e.g. 4.A) beside each band
+   you've marked; **band key** lists the names right of the gel with each band's
+   annotation and estimated MW ("4.A cleaved (21 kDa)"). The full band table (with ±) is
+   under Tables for the notebook, to copy. **Keep as panel** keeps the figure as panel A;
+   the next image loaded is drawn beside it as B (all panels scaled to the same height,
+   lettered), and the caption gives each panel's caption after its letter (e.g. a
+   Coomassie gel and its western blot). **Clear panels** goes back to one figure.
+   Download as PNG or copy to the clipboard. The **figure caption** underneath is written from the
    method, the ladder and lane annotations (label, annotation and volume where filled in; if two
    lanes share a label, lanes are also named by number) and the
    groups; it follows them until edited (Regenerate starts again) and can be copied.
+5. **Tables for the notebook** (under the figure): the run method (Parameter / Details,
+   with the ladder and sample preparation), lane assignments (lane, sample, groups,
+   amount, volume), sample preparation (per lane: concentration, amount, sample, diluent,
+   reducing agent, dye, total) and band annotations (band, lane, MW ±, annotation). Each
+   has its own **Copy**, and **Copy all** copies them one after another under their
+   headings: they paste as tables into LabArchives or Word and as cells into a
+   spreadsheet.
 
 **Session log** (Download box): a timestamped record of what the page and the user
 did (image name and size, edits, lane count and dividers, bands found per lane, ladder
@@ -156,7 +190,9 @@ Run `python tools/stamp_version.py` before committing changes to `index.html`, `
 `js/`. It adds a content-based version to every file reference, so browsers load the new
 files instead of cached ones, and counts the version shown next to the title
 (`tools/version.json`). If an old version still shows, a hard refresh (Cmd+Shift+R)
-fetches everything again.
+fetches everything again. Features new in a version carry an orange **NEW** badge
+(`<span class="new">new</span>` in `index.html`) so people already using the page spot
+them; take the badges off a version or two later.
 
 ## Python scoping work
 

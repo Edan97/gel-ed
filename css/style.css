@@ -240,3 +240,38 @@ label.row.method-row { justify-content: flex-start; gap: 0.6rem; font-size: 0.9r
 .ladder-sizes-label { display: block; margin: 0.4rem 0 0.2rem; font-size: 0.9rem; }
 .ladder-sizes { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2rem; resize: vertical; font: inherit; }
 canvas.calibration { display: block; width: 100%; }
+.run-fields { display: flex; flex-wrap: wrap; gap: 0.45rem 1rem; margin: 0.6rem 0 0.4rem; font-size: 0.9rem; }
+.run-fields[hidden] { display: none; }
+.run-fields label, .prep-settings label { display: inline-flex; align-items: center; gap: 0.35rem; }
+.run-fields input[type="text"], .prep-settings input.name, .prep-settings select {
+  font: inherit; color: inherit; background: var(--page);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.45rem; width: 9rem;
+}
+.run-fields input.wide { width: 15rem; }
+.run-fields input.num { width: 3.5rem; }
+.run-fields .unit-box input, .prep-settings .unit-box input { width: 3.2rem; }
+.prep-settings { display: flex; flex-wrap: wrap; gap: 0.45rem 1rem; margin: 0.4rem 0 0.5rem; font-size: 0.9rem; }
+.prep-settings input.name { width: 6.5rem; }
+table.prep .unit-box input { width: 3.6rem; }
+table.prep .prep-lane { max-width: 16rem; }
+table.prep td.calc { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; padding-left: 0.8rem; }
+table.prep tr.over td.prep-sample { color: #c0392b; font-weight: 600; }
+.btn[hidden] { display: none; }
+.hint-inline { color: var(--text-secondary); }
+table.prep td.prep-red-tick { text-align: center; }
+.eln-section { margin-top: 0.8rem; }
+.eln-head { display: flex; align-items: center; gap: 0.8rem; }
+.eln-head h3.sub { margin: 0.4rem 0; }
+.eln-head .btn { padding-top: 0.2rem; padding-bottom: 0.2rem; }
+.eln-section .annot-wrap, .eln-section { overflow-x: auto; }
+table.eln { border-collapse: collapse; font-size: 0.85rem; }
+table.eln th, table.eln td { border: 1px solid var(--border); padding: 0.2rem 0.5rem; text-align: left; vertical-align: top; }
+table.eln th { font-weight: 600; background: var(--page); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* "new" badge on features added in this version, for people already using the page */
+.new {
+  display: inline-block; margin-left: 0.3em; padding: 0.05em 0.45em; border-radius: 0.7em;
+  background: #e8590c; color: #ffffff; font-size: 0.7rem; font-weight: 600; line-height: 1.4;
+  letter-spacing: 0.03em; text-transform: uppercase; vertical-align: 0.1em;
+}

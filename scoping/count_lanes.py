@@ -13,6 +13,7 @@
    the lane width with the true one, as each half-lane's dividers average a gap and the
    lane's own middle; against the darker one a divider on a band cancels the lane.
 3. Each divider moves to the palest column within +-15% of p; empty lanes at the edges
+   (middle 40% no darker than 4% of the way from the 5th to the 95th percentile column)
    are margin; a remaining edge piece narrower than half a lane joins its neighbour.
 
 Usage:
@@ -105,7 +106,7 @@ def count_lanes(grey):
     lo, hi = srt[int(0.05 * (w - 1))], srt[int(0.95 * (w - 1))]
 
     def empty(a, b):
-        return not mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.1 * (hi - lo)
+        return not mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.04 * (hi - lo)
 
     while len(bounds) > 2 and empty(bounds[0], bounds[1]):
         bounds.pop(0)

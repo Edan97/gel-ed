@@ -2,23 +2,24 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=f66b246c";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f66b246c";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f66b246c";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure, drawCalibration } from "./draw.js?v=f66b246c";
-import { median } from "./signal.js?v=f66b246c";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=f66b246c";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=f66b246c";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=f66b246c";
-import { log, logOnChange, logText } from "./log.js?v=f66b246c";
-import { LADDERS } from "./ladders.js?v=f66b246c";
-import { drawIcons } from "./icons.js?v=f66b246c";
+import { readImage } from "./image.js?v=f78e7ddd";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f78e7ddd";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f78e7ddd";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure, drawCalibration } from "./draw.js?v=f78e7ddd";
+import { median } from "./signal.js?v=f78e7ddd";
+import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=f78e7ddd";
+import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=f78e7ddd";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=f78e7ddd";
+import { log, logOnChange, logText } from "./log.js?v=f78e7ddd";
+import { LADDERS } from "./ladders.js?v=f78e7ddd";
+import { drawIcons } from "./icons.js?v=f78e7ddd";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
 const TONE = ["brightness", "contrast"];
 const BANDS = ["k", "core", "smooth", "noiseRows"];
 const LABEL_SPACE = 26; // screen px above the overlay for lane numbers
+const LANE_ARRAYS = ["laneIds", "laneNotes", "laneVols", "laneConc", "laneUg", "laneRed"]; // state kept per lane (index = lane number)
 
 const state = {
   src: null,        // {grey, w, h, name}
@@ -41,10 +42,24 @@ const state = {
   laneIds: [],      // per lane: lane label (undefined = the lane number)
   laneNotes: [],    // per lane: annotation (not on the figure)
   laneVols: [],     // per lane: volume loaded (µL), as typed
+  laneConc: [],     // per lane: sample concentration (mg/mL), as typed (sample preparation)
+  laneUg: [],       // per lane: amount to load (µg), as typed (blank: as much sample as fits)
+  laneRed: [],      // per lane: reducing agent added (true/false; undefined = ticked if in the group named Reduced)
   aligns: {},       // running correction per "lane:refLane", cleared when bands are found again
   captionAuto: true, // the caption follows the annotations until the user edits it
   // Method (caption only): western blot with antibodies (preset key or "custom" + text), or SDS-PAGE with a stain
   method: { type: "sds", stain: "Coomassie", antibodies: [{ key: Object.keys(ANTIBODIES)[0], text: "" }] },
+  // how the gel was run and (western blots) transferred: free text per field, "" = not
+  // given. Defaults: what the lab's notebooks use most (NuPAGE gels in MES, 95 °C 5 min,
+  // 180 V ~35 min; wet transfer at 100 V 1 h in the cold, Ponceau check, BSA block, ECL).
+  // Wells vary (10, 12, 15), so left blank.
+  run: { gel: "NuPAGE 4–12% Bis-Tris", wells: "", buffer: "MES", heatC: "95", heatMin: "5", volts: "180", minutes: "35",
+         membrane: "nitrocellulose", transfer: "100 V, 1 h, cold room", ponceau: true, blocking: "5% BSA in TBS, 1 h, RT",
+         detection: "ECL chemiluminescence" },
+  // sample preparation: every tube made up to total µL with dye at dyeFold×, and the
+  // reducing agent in the lanes ticked Reduced (laneRed)
+  prep: { total: "20", dyeFold: "4", diluent: "PBS", reducer: "1 M DTT", reducerUl: "2" },
+  panels: [],       // figures kept as panels: [{canvas, caption}], drawn left of this one
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
   cropImg: null,    // {grey, w, h}
@@ -105,9 +120,7 @@ function mirrorLanes(before, after) {
   for (const lad of state.ladders) lad.lane = Math.min(Math.max(1, after + 1 - lad.lane), after);
   if (before !== after) return;
   const flip = (arr) => { const out = []; arr.forEach((v, k) => { if (k >= 1 && k <= after) out[after + 1 - k] = v; }); return out; };
-  state.laneIds = flip(state.laneIds);
-  state.laneNotes = flip(state.laneNotes);
-  state.laneVols = flip(state.laneVols);
+  for (const key of LANE_ARRAYS) state[key] = flip(state[key]);
   for (const g of state.groups) if (g.from !== null) [g.from, g.to] = [after + 1 - g.to, after + 1 - g.from];
   drawAnnotations(true);
 }
@@ -228,13 +241,41 @@ editCanvas.addEventListener("pointermove", (e) => {
 
 editCanvas.addEventListener("pointerup", () => {
   if (!drag) return;
+  const before = drag.crop;
   drag = null;
   state.cropUser = true;
   log("crop", { area: state.crop, frame: state.box && { W: state.box.W, H: state.box.H } });
-  state.bounds = null; // area changed: place lanes again
+  carryLanes(before);
   resetLadders();
   analyse();
 });
+
+// After the area is trimmed, the lanes stay where they were on the gel: dividers move
+// with the crop's left edge, spaces cut off go, ones cut through are trimmed, and what's
+// left at the edges is empty space. Lanes cut off on the left shift everything kept per
+// lane (labels, annotations, ladders, groups) down. No lanes yet (or none left): placed again.
+function carryLanes(old) {
+  if (!state.bounds || !old) { state.bounds = null; return; }
+  const dx = old.x0 - state.crop.x0, w = state.crop.x1 - state.crop.x0 + 1;
+  const sp = spaces().map(([a, b], i) => ({ a: Math.max(0, a + dx), b: Math.min(w, b + dx), dead: state.dead.has(i), was: a + dx }));
+  const kept = sp.filter((s) => s.b - s.a >= 4);
+  if (!kept.some((s) => !s.dead)) { state.bounds = null; return; }
+  const lost = sp.filter((s) => !s.dead && s.b - s.a < 4 && s.was < 0).length; // lanes cut off on the left
+  if (kept[0].a > 0) kept.unshift({ a: 0, b: kept[0].a, dead: true });
+  if (kept[kept.length - 1].b < w) kept.push({ a: kept[kept.length - 1].b, b: w, dead: true });
+  state.bounds = [kept[0].a, ...kept.map((s) => s.b)];
+  state.dead = new Set(kept.map((s, i) => (s.dead ? i : -1)).filter((i) => i >= 0));
+  const n = kept.filter((s) => !s.dead).length;
+  if (lost) {
+    for (const key of LANE_ARRAYS) state[key] = state[key].map((_, k, arr) => arr[k + lost]);
+    for (const lad of state.ladders) lad.lane = Math.min(n, Math.max(1, lad.lane - lost));
+    for (const g of state.groups) if (g.from !== null) {
+      g.from = Math.max(1, g.from - lost); g.to -= lost;
+      if (g.to < 1 || g.from > n) g.from = g.to = null; else g.to = Math.min(n, g.to);
+    }
+  }
+  $("lanes").value = n;
+}
 
 // ---------- lanes and bands ----------
 
@@ -500,7 +541,12 @@ function assignLadders() {
           const typical = medianOf(laneBands.filter((b) => b.fwhm).map((b) => b.fwhm)) / 2.355 || 3;
           const sw = found && found.fwhm && !q.created ? found.fwhm / 2.355 : typical;
           const sl = spreadAt(c, yr); // the ladder bands' spread at this row (their positions are as uncertain)
-          const rows = Math.hypot(Math.hypot(sy, sw) * al.stretch, al.sigma ?? worst, sl);
+          // running: the leftover mismatch after the correction; where the lane matches the
+          // one next to the ladder poorly, the correction itself is in doubt, so the band
+          // could be anywhere from its corrected row to where it sits (and at least the worst
+          // mismatch seen)
+          const run = al.ok ? al.sigma ?? worst : Math.max(al.sigma ?? 0, worst, Math.abs(yr - q.y));
+          const rows = Math.hypot(Math.hypot(sy, sw) * al.stretch, run, sl);
           const slope = Math.abs(c.f(Math.min(yr + 0.5, c.y1)) - c.f(Math.max(yr - 0.5, c.y0)));
           const sd = Math.hypot(slope * rows, c.loo ? c.loo(yr) : 0);
           out.pm = out.kda * (10 ** sd - 1);
@@ -623,9 +669,7 @@ function setDead(space, on) {
     arr.forEach((v, i) => { const k = renumber(i + offset); if (k !== null) out[k - offset] = v; });
     return out;
   };
-  state.laneIds = remap(state.laneIds, 0);
-  state.laneNotes = remap(state.laneNotes, 0);
-  state.laneVols = remap(state.laneVols, 0);
+  for (const key of LANE_ARRAYS) state[key] = remap(state[key], 0);
   state.picks = remap(state.picks, 1);
   const nearest = (sp) => 1 + after.reduce((bi, s, i) => (Math.abs(s - sp) < Math.abs(after[bi] - sp) ? i : bi), 0);
   for (const lad of state.ladders) {
@@ -826,6 +870,12 @@ overlayCanvas.addEventListener("pointerup", (e) => {
 const ladderSizes = (lad) => lad.sizes;
 const presetSizes = (type) => (type === "custom" ? [] : [...LADDERS[type].kda]);
 const ladderName = (lad) => (lad.type === "custom" ? (lad.sizes.length ? `Custom ladder (${lad.sizes.join(", ")} kDa)` : "Custom ladder") : LADDERS[lad.type].name);
+// as in the caption: with supplier and catalogue number, e.g. "BenchMark™ Protein Ladder (Thermo Fisher Scientific, cat. # 10747012)"
+const ladderCaption = (lad) => {
+  const L = LADDERS[lad.type];
+  return L && L.catalog ? `${ladderName(lad)} (${[L.supplier, `cat. # ${L.catalog}`].filter(Boolean).join(", ")})` : ladderName(lad);
+};
+const ladderShort = (lad) => (LADDERS[lad.type] && LADDERS[lad.type].short) || "Ladder";
 // "250, 150 100;75" -> [250, 150, 100, 75]: positive numbers, largest first, no repeats
 const parseSizes = (text) => [...new Set((text.match(/\d+(?:\.\d+)?/g) || []).map(Number).filter((v) => v > 0))]
   .sort((a, b) => b - a);
@@ -902,7 +952,7 @@ function drawLadderNotes() {
       <label class="vol">Volume <span class="unit-box"><input type="text" class="ln-vol" inputmode="decimal"><span class="unit">µL</span></span></label>`;
     row.querySelector(".lane-no").textContent = state.ladders.length > 1 ? `Ladder ${i + 1}` : "Ladder";
     const text = row.querySelector(".ln-text"), vol = row.querySelector(".ln-vol");
-    text.value = lad.noteText ?? ladderName(lad);
+    text.value = lad.noteText ?? ladderCaption(lad);
     vol.value = lad.volume ?? "";
     text.addEventListener("input", () => { lad.noteText = text.value; updateCaption(); });
     vol.addEventListener("input", () => { lad.volume = vol.value; updateCaption(); });
@@ -929,8 +979,11 @@ function drawAnnotations(force = false) {
     th.innerHTML = `<input type="text" class="group-name" placeholder="Group name"><button type="button" class="link group-remove" title="Remove this group">×</button>`;
     const name = th.querySelector(".group-name");
     name.value = g.name;
-    name.addEventListener("input", () => { g.name = name.value; drawFigure(); updateCaption(); });
-    th.querySelector(".group-remove").addEventListener("click", () => { state.groups.splice(gi, 1); drawAnnotations(true); });
+    name.addEventListener("input", () => { g.name = name.value; drawFigure(); drawPrep(); updateCaption(); });
+    th.querySelector(".group-remove").addEventListener("click", () => {
+      state.groups.splice(gi, 1);
+      drawAnnotations(true); updateCaption();
+    });
     head.append(th);
   });
   const addTh = document.createElement("th");
@@ -950,11 +1003,11 @@ function drawAnnotations(force = false) {
     const note = tr.querySelector(".lane-text"), vol = tr.querySelector(".lane-vol");
     note.value = state.laneNotes[k] ?? "";
     vol.value = state.laneVols[k] ?? "";
-    note.addEventListener("input", () => { state.laneNotes[k] = note.value; updateCaption(); });
+    note.addEventListener("input", () => { state.laneNotes[k] = note.value; drawPrep(); updateCaption(); });
     vol.addEventListener("input", () => { state.laneVols[k] = vol.value; updateCaption(); });
     const id = tr.querySelector(".lane-id");
     id.value = state.laneIds[k] ?? String(k);
-    id.addEventListener("input", () => { grow(id); state.laneIds[k] = id.value; drawFigure(); updateCaption(); });
+    id.addEventListener("input", () => { grow(id); state.laneIds[k] = id.value; drawFigure(); drawPrep(); updateCaption(); });
     state.groups.forEach((g, gi) => {
       const td = document.createElement("td");
       td.className = "group-cell";
@@ -971,6 +1024,7 @@ function drawAnnotations(force = false) {
   table.replaceChildren(head, ...rows);
   table.querySelectorAll("textarea.lane-id").forEach(grow);
   paintGroups();
+  drawPrep();
 }
 
 // Pasting several lines into a lane annotation box fills that lane and the ones below,
@@ -1028,6 +1082,7 @@ window.addEventListener("pointerup", () => {
   log("group", { group: state.groups.indexOf(groupDrag.g) + 1, from: groupDrag.g.from, to: groupDrag.g.to });
   groupDrag = null;
   drawFigure();
+  drawPrep();
   updateCaption();
 });
 
@@ -1050,14 +1105,224 @@ function drawBandNotes() {
     tr.innerHTML = `<td class="band-name"></td><td class="band-mw"></td><td><input type="text" class="band-text" placeholder="e.g. full-length, cleaved, …"></td>`;
     tr.querySelector(".band-name").textContent = q.name;
     tr.querySelector(".band-mw").textContent = q.kda === null ? (q.label || "—")
-      : `${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}${q.alignOk ? "" : " ?"}`;
-    if (!q.alignOk) tr.querySelector(".band-mw").title = "This lane matches the lane next to the ladder poorly: its running correction is uncertain.";
+      : `${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}`;
     const input = tr.querySelector(".band-text");
     input.value = q.ref.note ?? "";
-    input.addEventListener("input", () => { q.ref.note = input.value; });
+    input.addEventListener("input", () => { q.ref.note = input.value; drawTables(); drawFigure(); });
     return tr;
   });
   table.replaceChildren(head, ...rows);
+}
+
+// ---------- sample preparation and tables for the notebook ----------
+
+const num = (v) => { const x = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(x) ? x : null; };
+const fmt = (v) => String(+v.toFixed(2)); // 2.0 -> "2", 7.857 -> "7.86"
+
+// Whether a lane gets the reducing agent: as ticked, else (not touched) whether it's in a
+// group whose name starts "Reduc", "Red", "Re" or "R" (not "Non-reduced")
+const reducedGroup = (k) => state.groups.some((g) => g.from !== null && k >= g.from && k <= g.to
+  && /^\s*(reduc|red\b|re\b|r\b)/i.test(g.name) && !/non/i.test(g.name));
+const isReduced = (k) => state.laneRed[k] ?? reducedGroup(k);
+
+// One lane's tube: every tube is made up to the total with dye at dyeFold× and, in the
+// reduced group, the reducing agent; the rest ("room") is sample and diluent. With an
+// amount and a concentration, sample = amount ÷ concentration (mg/mL = µg/µL); without
+// an amount, the sample fills the room. over: the amount doesn't fit.
+function prepRow(k) {
+  const p = state.prep, total = num(p.total), fold = num(p.dyeFold);
+  const conc = num(state.laneConc[k]), ug = num(state.laneUg[k]);
+  const reduced = isReduced(k);
+  const dye = total !== null && fold > 1 ? total / fold : null;
+  const red = reduced ? (num(p.reducerUl) ?? 0) : 0;
+  const room = dye !== null ? total - dye - red : null;
+  let sample = room, amount = conc !== null && room !== null ? conc * room : null;
+  if (ug !== null) { amount = ug; sample = conc ? ug / conc : null; }
+  const over = sample !== null && room !== null && sample > room + 1e-9;
+  const diluent = sample !== null && room !== null ? Math.max(0, room - sample) : null;
+  return { conc, ug: amount, sample, diluent, red, dye, total, reduced, over, given: conc !== null || ug !== null };
+}
+
+// A sample lane as text: its label (if it isn't just the number) and annotation
+function laneDesc(k) {
+  const label = (state.laneIds[k] ?? String(k)).replace(/\s*\n\s*/g, " ").trim();
+  return [label === String(k) ? "" : label, (state.laneNotes[k] ?? "").trim()].filter(Boolean).join(", ");
+}
+
+// Sample preparation: one row per sample lane, its concentration and amount typed, the
+// volumes worked out (prepRow). The settings above it apply to every lane.
+function drawPrep(force = false) {
+  const table = $("prep");
+  for (const el of document.querySelectorAll("[data-prep]")) if (document.activeElement !== el) el.value = state.prep[el.dataset.prep];
+  if (!force && typingIn(table)) { fillPrep(); return; }
+  const n = state.bounds ? lanePairs().length : 0;
+  const ladderLanes = new Set(state.ladders.map((l) => l.lane));
+  const p = state.prep;
+  const head = document.createElement("tr");
+  head.innerHTML = `<th>Lane</th><th>Conc.</th><th>Amount</th><th>Reduced</th><th>Sample</th><th></th><th></th><th>Dye</th><th>Total</th>`;
+  head.children[5].textContent = p.diluent.trim() || "Diluent";
+  head.children[6].textContent = p.reducer.trim() || "Reducing agent";
+  const rows = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k)).map((k) => {
+    const tr = document.createElement("tr");
+    tr.dataset.lane = String(k);
+    tr.innerHTML = `<td class="prep-lane"></td>
+      <td><span class="unit-box"><input type="text" class="prep-conc" inputmode="decimal"><span class="unit">mg/mL</span></span></td>
+      <td><span class="unit-box"><input type="text" class="prep-ug" inputmode="decimal"><span class="unit">µg</span></span></td>
+      <td class="prep-red-tick"><input type="checkbox" class="prep-reduced"></td>
+      <td class="calc prep-sample"></td><td class="calc prep-dil"></td><td class="calc prep-red"></td><td class="calc prep-dye"></td><td class="calc prep-total"></td>`;
+    const desc = laneDesc(k);
+    tr.querySelector(".prep-lane").textContent = desc ? `${k} · ${desc}` : String(k);
+    const conc = tr.querySelector(".prep-conc"), ug = tr.querySelector(".prep-ug");
+    conc.value = state.laneConc[k] ?? "";
+    ug.value = state.laneUg[k] ?? "";
+    conc.addEventListener("input", () => { state.laneConc[k] = conc.value; fillPrep(); updateCaption(); });
+    ug.addEventListener("input", () => { state.laneUg[k] = ug.value; fillPrep(); updateCaption(); });
+    const red = tr.querySelector(".prep-reduced");
+    red.checked = isReduced(k);
+    red.title = state.laneRed[k] === undefined && reducedGroup(k) ? "Ticked because the lane is in the Reduced group" : "";
+    red.addEventListener("change", () => { state.laneRed[k] = red.checked; red.title = ""; fillPrep(); updateCaption(); });
+    return tr;
+  });
+  table.replaceChildren(head, ...rows);
+  fillPrep();
+}
+
+// the worked-out cells (rebuilt as the user types, without touching their boxes)
+function fillPrep() {
+  const ul = (v) => (v === null ? "" : `${fmt(v)} µL`);
+  for (const tr of $("prep").querySelectorAll("tr[data-lane]")) {
+    const r = prepRow(+tr.dataset.lane);
+    const cell = (cls, text) => { tr.querySelector(cls).textContent = text; };
+    cell(".prep-sample", r.ug !== null && r.conc === null ? "needs conc." : ul(r.sample));
+    cell(".prep-dil", r.over ? "" : ul(r.diluent));
+    cell(".prep-red", r.reduced ? ul(r.red) : "");
+    cell(".prep-dye", ul(r.dye));
+    cell(".prep-total", ul(r.total));
+    tr.classList.toggle("over", r.over);
+    tr.querySelector(".prep-sample").title = r.over
+      ? `Too dilute: ${fmt(r.sample)} µL is more than the ${fmt(r.total - r.dye - r.red)} µL left; at most ${fmt(r.conc * (r.total - r.dye - r.red))} µg fits.` : "";
+  }
+  const over = [...$("prep").querySelectorAll("tr.over")].map((tr) => tr.dataset.lane);
+  $("prep-note").textContent = over.length ? `Lane${over.length > 1 ? "s" : ""} ${over.join(", ")}: the amount doesn't fit in the tube (hover for the most that does).` : "";
+}
+
+for (const el of document.querySelectorAll("[data-prep]")) {
+  el.addEventListener("input", () => { state.prep[el.dataset.prep] = el.value; drawPrep(); updateCaption(); });
+}
+
+// The sample preparation as a table for the notebook (lanes with a concentration or amount;
+// the reducing agent column only if a group is reduced)
+function prepTable() {
+  const p = state.prep;
+  const ks = state.bounds ? lanePairs().map((_, i) => i + 1).filter((k) => !state.ladders.some((l) => l.lane === k) && prepRow(k).given) : [];
+  const g = ks.some(isReduced);
+  const rows = [["Lane", "Sample", "Concentration (mg/mL)", "Amount (µg)", "Sample (µL)", `${p.diluent.trim() || "Diluent"} (µL)`,
+                 ...(g ? [`${p.reducer.trim() || "Reducing agent"} (µL)`] : []), `Loading dye ${p.dyeFold}× (µL)`, "Total (µL)"]];
+  const v = (x) => (x === null ? "" : fmt(x));
+  for (const k of ks) {
+    const r = prepRow(k);
+    const typed = (arr) => (arr[k] ?? "").trim(); // as typed (0.636 stays 0.636)
+    rows.push([String(k), laneDesc(k), typed(state.laneConc), typed(state.laneUg) || v(r.ug), r.over ? `${v(r.sample)} (too much)` : v(r.sample), r.over ? "" : v(r.diluent),
+               ...(g ? [r.reduced ? v(r.red) : "0"] : []), v(r.dye), v(r.total)]);
+  }
+  return rows;
+}
+
+// Lane assignments: every lane with its sample (ladders: the ladder), its groups, and the
+// amount and volume loaded where known (those columns only if any lane has one)
+function laneTable() {
+  const n = state.bounds ? lanePairs().length : 0;
+  const rows = [];
+  for (let k = 1; k <= n; k++) {
+    const lad = state.ladders.find((l) => l.lane === k);
+    const inGroups = state.groups.filter((g) => g.from !== null && k >= g.from && k <= g.to && g.name.trim()).map((g) => g.name.trim()).join(", ");
+    if (lad) { rows.push([String(k), (lad.noteText ?? ladderCaption(lad)).trim(), inGroups, "", (lad.volume ?? "").trim()]); continue; }
+    const r = prepRow(k), vol = (state.laneVols[k] ?? "").trim().replace(/\s*(µ|u)l$/i, "") || (r.given && r.total !== null ? fmt(r.total) : "");
+    rows.push([String(k), laneDesc(k), inGroups, r.ug !== null ? fmt(r.ug) : "", vol]);
+  }
+  const head = ["Lane", "Sample", "Group", "Amount (µg)", "Volume (µL)"];
+  const keep = head.map((_, c) => c < 2 || rows.some((r) => r[c]));
+  return [head, ...rows].map((r) => r.filter((_, c) => keep[c]));
+}
+
+// Marked bands: name, lane, estimated MW ± uncertainty (? = running correction uncertain)
+// and annotation
+function bandTable() {
+  const rows = [["Band", "Lane", "MW (kDa)", "± (kDa)", "Annotation"]];
+  (state.pickMarks || []).forEach((m, i) => m.forEach((q) => rows.push([q.name, String(i + 1),
+    q.kda === null ? q.label || "" : fmtKda(q.kda),
+    q.kda === null || q.pm === undefined ? "" : q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1), (q.ref.note ?? "").trim()])));
+  return rows;
+}
+
+// The tables under the figure, each with its own Copy button, and Copy all
+const TABLES = [
+  { title: "Run method", rows: () => runRecord(), empty: "" },
+  { title: "Lane assignments", rows: () => laneTable(), empty: "Lanes appear once the image is analysed." },
+  { title: "Sample preparation", rows: () => prepTable(), empty: "Type a concentration or amount for a lane under Sample preparation." },
+  { title: "Band annotations", rows: () => bandTable(), empty: "Click a band on the gel to mark it." },
+];
+function drawTables() {
+  const box = $("tables");
+  box.replaceChildren(...TABLES.map((t) => {
+    const rows = t.rows(), sec = document.createElement("div");
+    sec.className = "eln-section";
+    sec.innerHTML = `<div class="eln-head"><h3 class="sub"></h3><button type="button" class="btn">Copy</button></div>`;
+    sec.querySelector("h3").textContent = t.title;
+    const btn = sec.querySelector("button");
+    if (rows.length < 2) {
+      btn.disabled = true;
+      const p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = t.empty;
+      sec.append(p);
+    } else {
+      sec.append(htmlTable(rows, false));
+      btn.addEventListener("click", () => copyTables([{ title: t.title, rows: t.rows() }], $("tables-note")));
+    }
+    return sec;
+  }));
+}
+$("copy-all").addEventListener("click", () => {
+  const all = TABLES.map((t) => ({ title: t.title, rows: t.rows() })).filter((t) => t.rows.length > 1);
+  if (all.length) copyTables(all, $("tables-note"));
+});
+
+// rows (first = header) as a <table>; styled: borders written on every cell, for pasting
+function htmlTable(rows, styled) {
+  const table = document.createElement("table");
+  table.className = "eln";
+  const cell = "border:1px solid #000;padding:2px 6px;text-align:left;vertical-align:top";
+  if (styled) table.setAttribute("style", "border-collapse:collapse");
+  rows.forEach((r, i) => {
+    const tr = table.insertRow();
+    for (const c of r) {
+      const td = document.createElement(i ? "td" : "th");
+      td.textContent = c;
+      if (styled) td.setAttribute("style", cell);
+      tr.append(td);
+    }
+  });
+  return table;
+}
+
+// Copy tables so they paste as tables into the notebook's rich text (HTML, each under its
+// heading if more than one) or a spreadsheet (tab-separated, a blank line between). The
+// clipboard is asked during the click.
+async function copyTables(tables, note) {
+  const many = tables.length > 1;
+  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = tables.map((t) => (many ? `<h3>${esc(t.title)}</h3>` : "") + htmlTable(t.rows, true).outerHTML).join("<p></p>");
+  const tsv = tables.map((t) => (many ? `${t.title}\n` : "") + t.rows.map((r) => r.join("\t")).join("\n")).join("\n\n");
+  const what = many ? `${tables.length} tables` : `${tables[0].title} (${tables[0].rows.length - 1} row${tables[0].rows.length === 2 ? "" : "s"})`;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }),
+                                                         "text/plain": new Blob([tsv], { type: "text/plain" }) })]);
+    note.textContent = `Copied ${what}: paste into the notebook or a spreadsheet.`;
+  } catch {
+    try { await navigator.clipboard.writeText(tsv); note.textContent = `Copied ${what} as tab-separated text.`; }
+    catch (err) { note.textContent = `Couldn't copy (${err.message}).`; }
+  }
 }
 
 // ---------- method ----------
@@ -1067,6 +1332,10 @@ function drawMethod() {
   $("method-type").value = m.type;
   $("stain-row").hidden = m.type !== "sds";
   $("antibody-box").hidden = m.type !== "western";
+  $("transfer-fields").hidden = m.type !== "western";
+  for (const el of document.querySelectorAll("[data-run]")) {
+    if (el.type === "checkbox") el.checked = state.run[el.dataset.run]; else el.value = state.run[el.dataset.run];
+  }
   $("stain").value = m.stain;
   const list = $("antibodies");
   list.replaceChildren();
@@ -1106,8 +1375,75 @@ function methodSentence() {
   if (m.type === "sds") return m.stain.trim() ? `SDS-PAGE stained with ${m.stain.trim()}.` : "SDS-PAGE.";
   const abs = m.antibodies.map((ab) => (ab.key === "custom" ? ab.text.trim() : antibodyCaption(ANTIBODIES[ab.key]))).filter(Boolean);
   const list = abs.length < 3 ? abs.join(" and ") : `${abs.slice(0, -1).join(", ")} and ${abs[abs.length - 1]}`;
-  return abs.length ? `Western blot probed with ${list}.` : "Western blot.";
+  const det = state.run.detection.trim() ? `, detected by ${state.run.detection.trim()}` : "";
+  return abs.length ? `Western blot probed with ${list}${det}.` : `Western blot${det}.`;
 }
+
+for (const el of document.querySelectorAll("[data-run]")) {
+  el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
+    state.run[el.dataset.run] = el.type === "checkbox" ? el.checked : el.value;
+    updateCaption();
+  });
+}
+
+// How the gel was run (and transferred), from the fields filled in, e.g.
+//   "Samples were heated at 95 °C for 5 min and run on a NuPAGE 4–12% Bis-Tris gel (12
+//    wells) in MES running buffer at 165 V for 35 min."
+//   "Proteins were transferred to nitrocellulose (100 V, 1 h, cold room), checked with
+//    Ponceau S staining and blocked with 5% BSA in TBS."
+function runSentences() {
+  const r = Object.fromEntries(Object.entries(state.run).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
+  const out = [];
+  const heat = r.heatC || r.heatMin ? `heated${r.heatC ? ` at ${r.heatC} °C` : ""}${r.heatMin ? ` for ${r.heatMin} min` : ""}` : "";
+  let run = "";
+  if (r.gel || r.buffer || r.volts || r.minutes || r.wells) {
+    const gel = r.gel ? (/gels?$/i.test(r.gel) ? r.gel : `${r.gel} gel`) : "";
+    run = "run" + (gel ? ` on ${/^([aeiou]|8|11|18)/i.test(gel) ? "an" : "a"} ${gel}` : "")
+      + (r.wells ? ` (${r.wells} wells)` : "")
+      + (r.buffer ? ` in ${/buffer/i.test(r.buffer) ? r.buffer : `${r.buffer} running buffer`}` : "")
+      + (r.volts ? ` at ${r.volts} V` : "") + (r.minutes ? ` for ${r.minutes} min` : "");
+  }
+  if (heat || run) out.push(`Samples were ${[heat, run].filter(Boolean).join(" and ")}.`);
+  if (state.method.type === "western" && (r.membrane || r.transfer || r.ponceau || r.blocking)) {
+    const steps = [`transferred${r.membrane ? ` to ${r.membrane}` : ""}${r.transfer ? ` (${r.transfer})` : ""}`];
+    if (r.ponceau) steps.push("checked with Ponceau S staining");
+    if (r.blocking) steps.push(`blocked with ${r.blocking}`);
+    out.push(`Proteins were ${steps.length > 1 ? `${steps.slice(0, -1).join(", ")} and ${steps[steps.length - 1]}` : steps[0]}.`);
+  }
+  return out;
+}
+
+// The run record as a two-column table (Parameter, Details), filled-in fields only.
+function runRecord() {
+  const r = state.run, m = state.method, rows = [["Parameter", "Details"]];
+  const add = (name, v) => { if (v !== "" && v !== false && v != null) rows.push([name, String(v)]); };
+  add("Method", m.type === "sds" ? `SDS-PAGE${m.stain.trim() ? `, ${m.stain.trim()} stain` : ""}` : "Western blot");
+  add("Gel", r.gel.trim());
+  add("Number of wells", r.wells.trim());
+  add("Running buffer", r.buffer.trim());
+  add("Sample heating", [r.heatC.trim() && `${r.heatC.trim()} °C`, r.heatMin.trim() && `${r.heatMin.trim()} min`].filter(Boolean).join(", "));
+  add("Voltage", r.volts.trim() && `${r.volts.trim()} V`);
+  add("Running time", r.minutes.trim() && `${r.minutes.trim()} min`);
+  state.ladders.forEach((lad, i) => add(state.ladders.length > 1 ? `Ladder ${i + 1}` : "Ladder", (lad.noteText ?? ladderCaption(lad)).trim()));
+  const p = state.prep, given = state.bounds ? lanePairs().map((_, i) => i + 1).filter((k) => prepRow(k).given) : [];
+  const g = given.some(isReduced);
+  if (given.length) {
+    const dye = num(p.total) !== null && num(p.dyeFold) > 1 ? `${fmt(num(p.total) / num(p.dyeFold))} µL ` : "";
+    add("Sample preparation", `${p.total} µL per lane: sample${p.diluent.trim() ? ` and ${p.diluent.trim()}` : ""}, ${dye}${p.dyeFold}× loading dye`
+      + (g ? `; reduced lanes with ${p.reducerUl} µL ${p.reducer.trim()}` : ""));
+  }
+  if (m.type === "western") {
+    add("Membrane", r.membrane.trim());
+    add("Transfer", r.transfer.trim());
+    if (r.ponceau) add("Transfer check", "Ponceau S staining");
+    add("Blocking", r.blocking.trim());
+    m.antibodies.forEach((ab, i) => add(m.antibodies.length > 1 ? `Antibody ${i + 1}` : "Antibody",
+      ab.key === "custom" ? ab.text.trim() : antibodyLabel(ANTIBODIES[ab.key])));
+    add("Detection", r.detection.trim());
+  }
+  return rows;
+}
+
 
 // ---------- figure caption ----------
 
@@ -1121,6 +1457,12 @@ function generateCaption() {
   if (!state.bounds) return "";
   const n = lanePairs().length;
   const vol = (v) => (v && v.trim() ? ` (${v.trim().replace(/\s*(µ|u)l$/i, "")} µL)` : "");
+  // sample lanes: amount (from the sample preparation) and volume loaded, e.g. " (5 µg, 20 µL)"
+  const load = (k) => {
+    const r = prepRow(k), v = (state.laneVols[k] ?? "").trim().replace(/\s*(µ|u)l$/i, "") || (r.given && r.total !== null ? fmt(r.total) : "");
+    const parts = [r.ug !== null ? `${fmt(r.ug)} µg` : "", v ? `${v} µL` : ""].filter(Boolean);
+    return parts.length ? ` (${parts.join(", ")})` : "";
+  };
   const lines = [];
   // lane labels on one line; if two lanes share a label, every lane is named by number too
   const labelOf = (k) => (state.laneIds[k] ?? String(k)).replace(/\s*\n\s*/g, " ").trim() || String(k);
@@ -1130,13 +1472,13 @@ function generateCaption() {
     const lad = state.ladders.find((l) => l.lane === k);
     const label = repeated && labelOf(k) !== String(k) ? `${k} (${labelOf(k)})` : labelOf(k);
     if (lad) {
-      lines.push(`Lane ${label}: ${(lad.noteText ?? ladderName(lad)).trim()}${vol(lad.volume)}.`);
+      lines.push(`Lane ${label}: ${(lad.noteText ?? ladderCaption(lad)).trim()}${vol(lad.volume)}.`);
       continue;
     }
-    const text = (state.laneNotes[k] ?? "").trim(), v = vol(state.laneVols[k]);
+    const text = (state.laneNotes[k] ?? "").trim(), v = load(k);
     if (text || v) lines.push(`Lane ${label}: ${text || "sample"}${v}.`);
   }
-  lines.unshift(methodSentence());
+  lines.unshift(methodSentence(), ...runSentences());
   const range = (g) => (g.from === g.to ? `lane ${g.from}` : `lanes ${g.from}–${g.to}`);
   const groups = state.groups.filter((g) => g.from !== null && g.name.trim());
   if (groups.length) lines.push(`Groups: ${groups.map((g) => `${g.name.trim()}, ${range(g)}`).join("; ")}.`);
@@ -1144,7 +1486,13 @@ function generateCaption() {
 }
 
 function updateCaption() {
-  if (state.captionAuto) $("caption").value = generateCaption();
+  drawTables();
+  if (!state.captionAuto) return;
+  const own = generateCaption();
+  if (!state.panels.length) { $("caption").value = own; return; }
+  const parts = state.panels.map((p, i) => `(${letter(i)}) ${p.caption}`);
+  if (showCurrent() && own) parts.push(`(${letter(state.panels.length)}) ${own}`);
+  $("caption").value = parts.join(" ");
 }
 
 $("caption").addEventListener("input", () => { state.captionAuto = false; }); // edited: stop following
@@ -1160,9 +1508,18 @@ function drawFigure() {
   const side = (l) => (l ? [...l.markers].sort((a, b) => a.y - b.y).map((q) => ({ y: q.y, kda: q.kda })) : null);
   // above the gel: lane labels and annotations (sample lanes; ladders are on the MW scale)
   // and group bars, one row per group column that has lanes
-  const pairs = lanePairs(), ladderLanes = new Set(state.ladders.map((l) => l.lane));
-  const lanes = pairs.map(([x0, x1], i) => (ladderLanes.has(i + 1) ? { x0, x1, id: "", text: "" }
-    : { x0, x1, id: state.laneIds[i + 1] ?? String(i + 1), text: "" }));
+  // with the lane list, lanes are numbered above the gel and described beside it
+  const pairs = lanePairs(), listed = $("show-list").checked, named = $("show-ladder-names").checked;
+  const ladderAt = (k) => state.ladders.find((l) => l.lane === k);
+  const lanes = pairs.map(([x0, x1], i) => {
+    const lad = ladderAt(i + 1);
+    if (lad) return { x0, x1, id: listed && !named ? String(i + 1) : "", text: "", ladder: named ? ladderShort(lad) : "" };
+    return { x0, x1, id: listed ? String(i + 1) : state.laneIds[i + 1] ?? String(i + 1), text: "" };
+  });
+  const list = !listed ? [] : pairs.map((_, i) => {
+    const lad = ladderAt(i + 1), text = lad ? `Ladder: ${(lad.noteText ?? ladderName(lad)).trim()}` : laneDesc(i + 1);
+    return text ? `${i + 1}. ${text}` : "";
+  }).filter(Boolean);
   // each group on the lowest row where it doesn't overlap another (side-by-side groups share a row)
   const rows = [];
   const groups = state.groups.filter((g) => g.from !== null && g.to <= pairs.length).map((g) => {
@@ -1171,14 +1528,84 @@ function drawFigure() {
     (rows[level] = rows[level] || []).push(g);
     return { x0: pairs[g.from - 1][0], x1: pairs[g.to - 1][1], name: g.name, level };
   });
+  // marked bands: a red arrowhead and name ("4.A") on the gel; the key beside it gives each
+  // name's annotation and MW (the full table is under Tables for the notebook)
+  const picked = (state.pickMarks || []).flatMap((m, j) => m.map((q) => ({ q, j })));
+  const bands = !$("show-bands").checked ? [] : picked.map(({ q, j }) => ({ x0: pairs[j][0], x1: pairs[j][1], y: q.y, name: q.name }));
+  const key = !$("show-bands").checked || !$("show-band-key").checked ? [] : picked.map(({ q }) => {
+    const note = (q.ref.note ?? "").trim(), mw = q.kda !== null ? `${fmtKda(q.kda)} kDa` : q.label ? `${q.label} kDa` : "";
+    return { name: q.name, text: note && mw ? `${note} (${mw})` : note || mw };
+  });
   const show = { ids: $("show-ids").checked, notes: false, groups: $("show-groups").checked, crowded: $("show-crowded").checked };
-  renderFigure($("figure-canvas"), grey, w, h, side(placed[0]), placed.length > 1 ? side(placed[placed.length - 1]) : null,
-               { lanes, groups, show });
+  const sizes = $("show-sizes").checked;
+  renderFigure(figCanvas, grey, w, h, sizes ? side(placed[0]) : null, sizes && placed.length > 1 ? side(placed[placed.length - 1]) : null,
+               { lanes, groups, show, list, bands, key });
+  composeFigure();
   $("figure-note").textContent = placed.length > 2
     ? `${placed.length} ladders: only the leftmost and rightmost are marked on the figure.` : "";
 }
 
-for (const id of ["show-ids", "show-groups", "show-crowded"]) $(id).addEventListener("change", () => state.cropImg && drawFigure());
+for (const id of ["show-ids", "show-groups", "show-crowded", "show-list", "show-ladder-names", "show-sizes", "show-bands", "show-band-key"]) {
+  $(id).addEventListener("change", () => state.cropImg && drawFigure());
+}
+
+// Panels: figures kept with "Keep as panel" are drawn left of this one, all scaled to the
+// same height and lettered A, B, …; the caption gives each panel's caption after its
+// letter. A kept figure isn't drawn twice: this image's figure shows again once another
+// image is loaded.
+const figCanvas = document.createElement("canvas"); // this image's figure, before panels
+const letter = (i) => String.fromCharCode(65 + i);
+const showCurrent = () => !state.panels.length || state.panels[state.panels.length - 1].src !== state.src;
+function composeFigure() {
+  const out = $("figure-canvas"), ctx = out.getContext("2d");
+  const parts = [...state.panels.map((p) => p.canvas), ...(showCurrent() ? [figCanvas] : [])];
+  if (!state.panels.length) {
+    out.width = figCanvas.width; out.height = figCanvas.height;
+    ctx.drawImage(figCanvas, 0, 0);
+    return;
+  }
+  const H = Math.max(...parts.map((c) => c.height));
+  const strip = Math.round(H * 0.07), gap = Math.round(H * 0.04);
+  const widths = parts.map((c) => Math.round((c.width * H) / c.height));
+  out.width = widths.reduce((a, b) => a + b, 0) + gap * (parts.length - 1);
+  out.height = H + strip;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.fillStyle = "#000000";
+  ctx.font = `bold ${Math.round(strip * 0.8)}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  let x = 0;
+  parts.forEach((c, i) => {
+    ctx.drawImage(c, x, strip, widths[i], H);
+    ctx.fillText(letter(i), x + Math.round(strip * 0.2), Math.round(strip * 0.85));
+    x += widths[i] + gap;
+  });
+}
+
+$("fig-pin").addEventListener("click", () => {
+  if (!state.cropImg || !showCurrent()) return;
+  const c = document.createElement("canvas");
+  c.width = figCanvas.width; c.height = figCanvas.height;
+  c.getContext("2d").drawImage(figCanvas, 0, 0);
+  // the caption as written (if edited and no panels yet), else as generated
+  const caption = state.captionAuto || state.panels.length ? generateCaption() : $("caption").value.trim();
+  state.panels.push({ canvas: c, caption, src: state.src });
+  state.captionAuto = true;
+  log("panel", { panels: state.panels.length });
+  $("fig-unpin").hidden = false;
+  composeFigure();
+  updateCaption();
+  $("figure-note").textContent = `Kept as panel ${letter(state.panels.length - 1)}. Load the next image: its figure goes beside it as panel ${letter(state.panels.length)}.`;
+});
+$("fig-unpin").addEventListener("click", () => {
+  state.panels = [];
+  log("panel", { panels: 0 });
+  $("fig-unpin").hidden = true;
+  $("figure-note").textContent = "";
+  if (state.cropImg) drawFigure();
+  updateCaption();
+});
 
 $("fig-download").addEventListener("click", () => {
   log("download", { what: "figure" });

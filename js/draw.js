@@ -248,7 +248,15 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const ifs = Math.max(Math.round(0.6 * afs), Math.floor(afs / tooWide));
   const idFont = `${ifs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
   const nLines = Math.max(0, ...idLines.map((ls) => ls.length));
-  const ids = show.ids && nLines ? Math.round(ifs * (1.15 * nLines + 0.25)) : 0;
+  // ladder names (lanes with .ladder) in the same row: across the lane if they fit, else
+  // reading upwards from just above the gel
+  ctx.font = idFont;
+  const ladders = lanes.filter((l) => l.ladder).map((l) => {
+    const tw = ctx.measureText(l.ladder).width;
+    return { ...l, upright: tw > (l.x1 - l.x0) * 0.92, tw };
+  });
+  const ladH = Math.max(0, ...ladders.map((l) => (l.upright ? l.tw + ifs * 0.3 : ifs * 1.4)));
+  const ids = Math.round(Math.max(show.ids && nLines ? ifs * (1.15 * nLines + 0.25) : 0, ladH));
   const notes = show.notes ? lanes.filter((l) => l.text) : [];
   const tilt = notes.some((l) => ctx.measureText(l.text).width > (l.x1 - l.x0) * 0.92);
   const notesH = !notes.length ? 0
@@ -261,8 +269,25 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const lean = tilt ? Math.max(0, ...notes.map((l) => (l.x0 + l.x1) / 2 + ctx.measureText(l.text).width * Math.SQRT1_2 + afs - w)) : 0;
   const mt = Math.max(Math.round(fs * 1.5), above + Math.round(afs * 0.6)), mb = Math.round(fs * 0.5);
   mr = Math.max(mr, Math.ceil(lean));
-  canvas.width = Math.ceil(w + ml + mr);
-  canvas.height = h + mt + mb;
+  // marked bands (top.bands: [{x0, x1, y, name}]): a red arrowhead just right of the band,
+  // pointing at it, with the band's name ("4.A") after it, haloed in white to read over the gel
+  const bandRows = (top && top.bands) || [];
+  const ah = Math.round(afs * 0.7), aw = Math.round(afs * 0.8), nfs = Math.round(afs * 0.8);
+  const RED = "#d62728", nameFont = `600 ${nfs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.font = nameFont; // names on the last lanes can run past the gel: make room
+  mr = Math.max(mr, Math.ceil(Math.max(0, ...bandRows.map((q) => q.x1 + aw + afs * 0.5 + ctx.measureText(q.name || "").width - w))));
+  // lane list (top.list: one line each, e.g. "2. 9D9-mIgG1 NR") to the right of everything
+  const list = (top && top.list) || [];
+  ctx.font = afont;
+  // band key (top.key: [{name, text}]) under the lane list, the name in red: "4.A cleaved (49 kDa)"
+  const key = (top && top.key) || [];
+  const keyLine = (k) => `${k.name}  ${k.text}`;
+  const keyTop = list.length && key.length ? list.length + 0.6 : 0; // in lines, after the list
+  const colW = [...list, ...key.map(keyLine)];
+  const listGap = colW.length ? Math.round(afs * 1.2) : 0, lineH = Math.round(afs * 1.45);
+  const listW = colW.length ? Math.ceil(Math.max(...colW.map((t) => ctx.measureText(t).width)) + afs * 0.6) : 0;
+  canvas.width = Math.ceil(w + ml + mr + listGap + listW);
+  canvas.height = Math.ceil(Math.max(h + mt + mb, mt + (keyTop + key.length) * lineH + mb, mt + list.length * lineH + mb));
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const gel = new OffscreenCanvas(w, h);
@@ -290,6 +315,30 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   };
   side(L, ml, -1);
   side(R, ml + w, 1);
+  if (bandRows.length) {
+    ctx.font = nameFont;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    for (const q of bandRows) {
+      const tip = ml + q.x1 - Math.round(afs * 0.15), y = mt + q.y;
+      ctx.beginPath();
+      ctx.moveTo(tip, y); ctx.lineTo(tip + aw, y - ah / 2); ctx.lineTo(tip + aw, y + ah / 2); ctx.closePath();
+      ctx.lineWidth = Math.max(2, nfs * 0.15);
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.fillStyle = RED;
+      ctx.fill();
+      if (!q.name) continue;
+      const tx = tip + aw + Math.round(afs * 0.15);
+      ctx.lineWidth = Math.max(2, nfs * 0.25);
+      ctx.strokeText(q.name, tx, y);
+      ctx.fillText(q.name, tx, y);
+    }
+    ctx.textBaseline = "alphabetic";
+    ctx.lineWidth = lw;
+    ctx.fillStyle = ctx.strokeStyle = "#000000";
+  }
 
   ctx.font = afont;
   ctx.fillStyle = ctx.strokeStyle = "#000000";
@@ -298,10 +347,35 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
     ctx.font = idFont;
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    lanes.forEach((l, i) => idLines[i].forEach((t, j) => // last line just above the gel
+    if (show.ids) lanes.forEach((l, i) => idLines[i].forEach((t, j) => // last line just above the gel
       ctx.fillText(t, ml + (l.x0 + l.x1) / 2, yb - (idLines[i].length - 1 - j) * Math.round(ifs * 1.15))));
+    for (const l of ladders) {
+      const cx = ml + (l.x0 + l.x1) / 2;
+      if (!l.upright) { ctx.fillText(l.ladder, cx, yb); continue; }
+      ctx.save();
+      ctx.translate(cx, yb);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(l.ladder, 0, 0);
+      ctx.restore();
+    }
     ctx.font = afont;
     yb -= ids;
+  }
+  if (colW.length) {
+    ctx.font = afont;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    const x = ml + w + mr + listGap;
+    list.forEach((t, i) => ctx.fillText(t, x, mt + afs + i * lineH));
+    key.forEach((k, i) => {
+      const y = mt + afs + (keyTop + i) * lineH;
+      ctx.fillStyle = RED;
+      ctx.fillText(k.name, x, y);
+      ctx.fillStyle = "#000000";
+      ctx.fillText(k.text, x + ctx.measureText(`${k.name}  `).width, y);
+    });
   }
   if (notesH) {
     for (const l of notes) {

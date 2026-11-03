@@ -133,6 +133,11 @@ def checks():
     out.append(("Lane counting: gel_02 has 13 lanes, dividers within 20 px of the hand-placed gaps",
                 len(counted) == 13 and worst <= 20, f"{len(counted)} lanes, worst divider {worst:.0f} px"))
 
+    g4 = load(GEL04).astype(float) / 65535
+    _, b = count_lanes(g4[38:695, 38:949])  # the area a user trimmed to (x 38-948, y 38-694)
+    out.append(("Lane counting: gel_04 trimmed still has 15 lanes (the faint first lane, one band, isn't margin)",
+                len(b) - 1 == 15, f"{len(b) - 1} lanes"))
+
     rows = read_csv(OUT / "gel_04_ladder.csv")
     picks = [(int(r["row"]), float(r["kDa"])) for r in rows]
     out.append(("Ladder lane: found automatically on gel_04 (lane 8 of 15, the middle)",

@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=f66b246c">
-  <script type="module" src="js/app.js?v=f66b246c"></script>
+  <link rel="stylesheet" href="css/style.css?v=f78e7ddd">
+  <script type="module" src="js/app.js?v=f78e7ddd"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="f66b246c">version 43</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="f78e7ddd">version 44</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
@@ -172,7 +172,7 @@
             <h3 class="sub">Ladder</h3>
             <div id="ladder-notes" class="ladder-notes"></div>
             <details class="sub-details" open>
-              <summary>Method</summary>
+              <summary>Method <span class="new" title="New in this version">new</span></summary>
               <p class="hint">Used in the figure caption.</p>
               <label class="row method-row">Type
                 <select id="method-type">
@@ -184,6 +184,27 @@
                 <div id="antibodies" class="antibodies"></div>
                 <button type="button" id="add-antibody" class="btn">Add antibody</button>
               </div>
+              <div id="run-fields" class="run-fields">
+                <label>Gel <input type="text" data-run="gel" list="gel-list" class="wide" placeholder="e.g. NuPAGE 4–12% Bis-Tris"></label>
+                <label>Wells <input type="text" data-run="wells" inputmode="numeric" class="num" placeholder="12"></label>
+                <label>Running buffer <input type="text" data-run="buffer" list="buffer-list" placeholder="e.g. MES"></label>
+                <label>Samples heated at <span class="unit-box"><input type="text" data-run="heatC" inputmode="decimal" placeholder="95"><span class="unit">°C</span></span>
+                  for <span class="unit-box"><input type="text" data-run="heatMin" inputmode="decimal" placeholder="5"><span class="unit">min</span></span></label>
+                <label>Run at <span class="unit-box"><input type="text" data-run="volts" inputmode="decimal" placeholder="165"><span class="unit">V</span></span>
+                  for <span class="unit-box"><input type="text" data-run="minutes" inputmode="decimal" placeholder="35"><span class="unit">min</span></span></label>
+              </div>
+              <div id="transfer-fields" class="run-fields" hidden>
+                <label>Membrane <input type="text" data-run="membrane" list="membrane-list" placeholder="e.g. nitrocellulose"></label>
+                <label>Transfer <input type="text" data-run="transfer" class="wide" placeholder="e.g. 100 V, 1 h, cold room"></label>
+                <label><input type="checkbox" data-run="ponceau"> Transfer checked with Ponceau S</label>
+                <label>Blocking <input type="text" data-run="blocking" class="wide" placeholder="e.g. 5% BSA in TBS, 1 h, RT"></label>
+                <label>Detection <input type="text" data-run="detection" list="detection-list" class="wide" placeholder="e.g. ECL chemiluminescence"></label>
+              </div>
+              <datalist id="gel-list"><option value="NuPAGE 4–12% Bis-Tris"><option value="NuPAGE 10% Bis-Tris"><option value="NuPAGE 12% Bis-Tris">
+                <option value="Bolt 4–12% Bis-Tris Plus"><option value="Mini-PROTEAN TGX 4–20%"></datalist>
+              <datalist id="buffer-list"><option value="MES"><option value="MOPS"><option value="Tris-glycine"></datalist>
+              <datalist id="membrane-list"><option value="nitrocellulose"><option value="PVDF"><option value="Immobilon-FL PVDF"></datalist>
+              <datalist id="detection-list"><option value="ECL chemiluminescence"><option value="LI-COR Odyssey, 700 and 800 nm channels"></datalist>
             </details>
             <details class="sub-details" open>
               <summary>Lane annotations</summary>
@@ -195,13 +216,31 @@
                 lone selected cell to clear it.</p>
               <div class="annot-wrap"><table id="annot" class="annot"></table></div>
             </details>
+            <details class="sub-details">
+              <summary>Sample preparation <span class="new" title="New in this version">new</span></summary>
+              <p class="hint">Type each lane's concentration and the amount to load: the sample volume is amount ÷
+                concentration, made up to the total with the diluent, loading dye and, in lanes ticked
+                <strong>Reduced</strong>, the reducing agent (lanes in a group named Reduced start ticked). Leave the
+                amount blank to use as much sample as fits. The amounts go in the caption.</p>
+              <div class="prep-settings">
+                <label>Total <span class="unit-box"><input type="text" data-prep="total" inputmode="decimal"><span class="unit">µL</span></span></label>
+                <label>Loading dye <span class="unit-box"><input type="text" data-prep="dyeFold" inputmode="decimal"><span class="unit">×</span></span></label>
+                <label>Diluent <input type="text" data-prep="diluent" class="name"></label>
+                <label>Reducing agent <input type="text" data-prep="reducer" class="name">
+                  <span class="unit-box"><input type="text" data-prep="reducerUl" inputmode="decimal"><span class="unit">µL</span></span>
+                  <span class="hint-inline">in lanes ticked Reduced</span></label>
+              </div>
+              <div class="annot-wrap"><table id="prep" class="annot prep"></table></div>
+              <p id="prep-note" class="hint"></p>
+            </details>
             <details id="band-annot" class="sub-details" open hidden>
               <summary>Band annotations</summary>
               <p class="hint">Each band you've marked, with its estimated molecular weight ± uncertainty. Masses are
                 corrected for each lane running differently from the lane next to the ladder (matched on where their
                 profiles rise and fall; assumed to have run like the ladder). The ± combines band position, the band's
                 own width, the ladder bands' width, the leftover mismatch after that correction, and ladder
-                calibration. "?" = the lane matches poorly.</p>
+                calibration. Where a lane matches poorly, the ± also covers the whole correction (from
+                where the band sits to where it's read).</p>
               <div class="annot-wrap"><table id="band-table" class="annot band-table"></table></div>
             </details>
           </div>
@@ -213,11 +252,18 @@
         <div class="buttons">
           <button type="button" id="fig-download" class="btn">Download PNG</button>
           <button type="button" id="fig-copy" class="btn">Copy</button>
+          <button type="button" id="fig-pin" class="btn" title="Keep this figure as panel A; the next image you load is drawn beside it">Keep as panel <span class="new" title="New in this version">new</span></button>
+          <button type="button" id="fig-unpin" class="btn" hidden>Clear panels</button>
         </div>
         <p class="fig-show">Show:
           <label><input type="checkbox" id="show-ids" checked> lane labels</label>
           <label><input type="checkbox" id="show-groups" checked> groups</label>
-          <label title="Untick to leave out ladder sizes too close to the one above to fit beside it (they'd otherwise sit further out on a longer line)"><input type="checkbox" id="show-crowded" checked> crowded sizes</label></p>
+          <label title="Untick to leave out ladder sizes too close to the one above to fit beside it (they'd otherwise sit further out on a longer line)"><input type="checkbox" id="show-crowded" checked> crowded sizes</label>
+          <label title="Number the lanes above the gel and list them beside it (for long sample names)"><input type="checkbox" id="show-list"> lane list <span class="new" title="New in this version">new</span></label>
+          <label title="Write each ladder's name above its lane"><input type="checkbox" id="show-ladder-names"> ladder names <span class="new" title="New in this version">new</span></label>
+          <label title="The MW (kDa) scale beside the gel, from the ladder"><input type="checkbox" id="show-sizes" checked> ladder sizes <span class="new" title="New in this version">new</span></label>
+          <label title="A red arrowhead and name (e.g. 4.A) at each band you've marked"><input type="checkbox" id="show-bands" checked> marked bands <span class="new" title="New in this version">new</span></label>
+          <label title="Beside the gel, each marked band's name with its annotation and estimated MW"><input type="checkbox" id="show-band-key" checked> band key <span class="new" title="New in this version">new</span></label></p>
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>
         <label class="caption-label" for="caption">Figure caption</label>
@@ -228,6 +274,16 @@
           <button type="button" id="caption-copy" class="btn">Copy caption</button>
           <button type="button" id="caption-regenerate" class="btn">Regenerate</button>
         </div>
+      </section>
+
+      <section class="card panel" id="tables-card">
+        <h2>4 · Tables for the notebook <span class="new" title="New in this version">new</span></h2>
+        <p class="hint">Written from the method, lane annotations, sample preparation and marked bands. Each copies as a
+          table: it pastes as a table into LabArchives or Word, and as cells into a spreadsheet. Copy all copies them
+          one after another, each under its heading.</p>
+        <div class="buttons"><button type="button" id="copy-all" class="btn">Copy all</button></div>
+        <p id="tables-note" class="hint"></p>
+        <div id="tables" class="eln-tables"></div>
       </section>
     </div>
   </main>

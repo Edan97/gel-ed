@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=f66b246c";
+import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=f78e7ddd";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -213,8 +213,9 @@ function columnContent(img, w, h) {
 // width), and halving or doubling the width puts dividers on bands. Lane widths from
 // w/40 (at least 8 px) to w/2 in 1% steps, offsets in steps of p/40 (at least 1 px).
 // Then each divider moves to the palest column within +-15% of p; empty lanes at either
-// edge (middle 40% no darker than 10% of the way from the 5th to the 95th percentile
-// column) are dead space, not lanes (the user can turn them back into lanes); and an
+// edge (middle 40% no darker than 4% of the way from the 5th to the 95th percentile
+// column: a lane with one faint band, gel_04's lane 1, is 6-11%; empty edges on the
+// samples are at most 2%) are dead space, not lanes (the user can turn them back into lanes); and an
 // edge lane narrower than half a lane joins its neighbour. Returns {n, pitch, gaps,
 // bounds, dead}: bounds from 0 to w, every divider; dead = indices of the spaces between
 // them that aren't lanes; n and gaps count lanes only. On gel_02:
@@ -256,7 +257,7 @@ export function countLanes(img, w, h) {
   }), w];
   const sorted = Float64Array.from(s).sort();
   const lo = sorted[Math.floor(0.05 * (w - 1))], hi = sorted[Math.floor(0.95 * (w - 1))];
-  const empty = (a, b) => !(mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.1 * (hi - lo));
+  const empty = (a, b) => !(mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.04 * (hi - lo));
   let first = 0, last = bounds.length - 2; // lanes: spaces first..last; the rest is dead space
   while (first < last && empty(bounds[first], bounds[first + 1])) first++;
   while (last > first && empty(bounds[last], bounds[last + 1])) last--;
