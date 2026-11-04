@@ -51,8 +51,14 @@ def column_content(grey):
     return np.clip(dark - bg, 0, None).mean(axis=0)
 
 
-def count_lanes(grey):
-    """Returns (pitch, bounds): bounds from the first lane's left edge to the last's right."""
+HINT = 0.12  # with a well spacing, lane widths within this share of it
+
+
+def count_lanes(grey, pitch_hint=None):
+    """Returns (pitch, bounds): bounds from the first lane's left edge to the last's right.
+    pitch_hint: the wells' spacing (wells.find_wells), if known: lane widths are then only
+    tried within 12% of it, and empty lanes at the edges stay lanes (unloaded wells, which
+    DNA mode marks empty) rather than becoming margin."""
     s = gaussian_filter1d(column_content(grey), 2)
     w = len(s)
     cs = np.concatenate([[0.0], np.cumsum(s)])
@@ -62,8 +68,10 @@ def count_lanes(grey):
         return (cs[b] - cs[a]) / (b - a) if b > a else np.nan
 
     best = (-np.inf, float(w), 0.0)
-    p = max(8.0, w / 40)
-    while p <= w / 2:
+    p, p_max = max(8.0, w / 40), w / 2
+    if pitch_hint:
+        p, p_max = max(4.0, (1 - HINT) * pitch_hint), (1 + HINT) * pitch_hint
+    while p <= p_max:
         dx = max(1.0, p / 40)
         x0 = 0.0
         while x0 < p:
@@ -108,9 +116,9 @@ def count_lanes(grey):
     def empty(a, b):
         return not mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.04 * (hi - lo)
 
-    while len(bounds) > 2 and empty(bounds[0], bounds[1]):
+    while not pitch_hint and len(bounds) > 2 and empty(bounds[0], bounds[1]):
         bounds.pop(0)
-    while len(bounds) > 2 and empty(bounds[-2], bounds[-1]):
+    while not pitch_hint and len(bounds) > 2 and empty(bounds[-2], bounds[-1]):
         bounds.pop()
     if len(bounds) > 3 and bounds[0] == 0 and bounds[1] < p / 2:
         bounds.pop(1)
@@ -151,3 +159,21 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+EMPTY_FILL = 0.05  # DNA mode: a lane with less is empty (js/bands.js EMPTY_FILL)
+
+
+def lane_fill(grey, bounds):
+    """Each space's middle 40% band content, 0 = the 5th percentile column, 1 = the 95th
+    (as countLanes' fill). Nicole's agarose gels: empty wells <= 0.04, loaded >= 0.12."""
+    s = gaussian_filter1d(column_content(grey), 2)
+    w = len(s)
+    cs = np.concatenate([[0.0], np.cumsum(s)])
+
+    def mean(a, b):
+        a, b = max(0, int(np.floor(a + 0.5))), min(w, int(np.floor(b + 0.5)))
+        return (cs[b] - cs[a]) / (b - a) if b > a else np.nan
+    srt = np.sort(s)
+    lo, hi = srt[int(0.05 * (w - 1))], srt[int(0.95 * (w - 1))]
+    return [(mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) - lo) / ((hi - lo) or 1) for a, b in zip(bounds, bounds[1:])]

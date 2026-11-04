@@ -12,13 +12,30 @@ export function bandLetter(i) {
   return name;
 }
 
+// How sizes and the gel are shown, set by the page's mode (protein or DNA): the label
+// for a ladder size, the scale's titles, and flip: show 1 - value (a DNA gel is read
+// inverted, dark bands on light, but shown as photographed, light bands on black).
+// Display only: band finding never goes through here.
+export const view = { size: (k) => String(k), scaleTitle: "MW (kDa)", logTitle: "MW (kDa, log scale)", logWord: "MW", flip: false };
+
+// Which ladder size labels to show when they'd crowd: the priority ones (q.keep: a DNA
+// ladder's brighter reference bands, e.g. the 1 kb Plus's 3.0, 1.0 and 0.5 kb) always, then
+// from the top down any other at least sep from every one shown. Returns them top to bottom.
+export function spaced(marks, sep) {
+  const shown = marks.filter((q) => q.keep);
+  for (const q of [...marks].sort((a, b) => a.y - b.y)) {
+    if (!q.keep && shown.every((o) => Math.abs(o.y - q.y) >= sep)) shown.push(q);
+  }
+  return shown.sort((a, b) => a.y - b.y);
+}
+
 export function greyToImageData(ctx, grey, w, h) {
   const img = ctx.createImageData(w, h);
   const d = img.data;
   for (let i = 0; i < w * h; i++) {
     const v = grey[i];
     if (Number.isNaN(v)) { d[i * 4 + 3] = 0; continue; } // outside the original image: transparent
-    const b = Math.round(Math.min(Math.max(v, 0), 1) * 255);
+    const b = Math.round(Math.min(Math.max(view.flip ? 1 - v : v, 0), 1) * 255);
     d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = b;
     d[i * 4 + 3] = 255;
   }
@@ -51,6 +68,8 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
         ctx.globalAlpha = 1;
         label(ctx, q.name, x + 9 * px, y, px, "#222222");
       }
+      // labels where they don't crowd (the brightest reference bands always), dots for all
+      const labelled = new Set(spaced((marks && marks[li]) || [], 13 * px));
       for (const q of (marks && marks[li]) || []) {
         const moving = drag && drag.mark === q;
         const x = moving ? drag.x : q.x, y = top + (moving ? drag.y : q.y);
@@ -60,7 +79,7 @@ export function drawOverlay(ctx, lanes, results, top, px, showProfiles = false, 
         ctx.arc(x, y, 4 * px, 0, 2 * Math.PI);
         ctx.fill();
         ctx.globalAlpha = 1;
-        label(ctx, String(q.kda), x + 7 * px, y, px, COLOURS.peak);
+        if (moving || labelled.has(q)) label(ctx, view.size(q.kda), x + 7 * px, y, px, COLOURS.peak);
       }
       return;
     }
@@ -134,7 +153,7 @@ function label(ctx, text, x, y, px, colour) {
 // make it a lane again. hover: {start, end, dead} under the pointer in the strip above the
 // gel: a lane's number turns into a red "x" (click: make it dead space), a dead space's
 // "+" darkens.
-export function drawDeadSpace(ctx, dead, top, height, px, hover = null, surface = "#fff") {
+export function drawDeadSpace(ctx, dead, top, height, px, hover = null, surface = "#fff", empty = []) {
   ctx.save();
   ctx.font = `bold ${Math.round(16 * px)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
@@ -146,11 +165,26 @@ export function drawDeadSpace(ctx, dead, top, height, px, hover = null, surface 
     ctx.fillStyle = on ? COLOURS.lane : "rgba(31, 78, 140, 0.45)";
     ctx.fillText("+", (start + end) / 2, top - 3 * px);
   }
+  // empty lanes (numbered, nothing loaded): a light grey veil with diagonal hatching
+  for (const [start, end] of empty) {
+    ctx.fillStyle = "rgba(150, 150, 150, 0.28)";
+    ctx.fillRect(start, top, end - start, height);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(start, top, end - start, height); ctx.clip();
+    ctx.strokeStyle = "rgba(150, 150, 150, 0.45)";
+    ctx.lineWidth = Math.max(1, px);
+    const stepH = 14 * px;
+    for (let y = top - (end - start); y < top + height; y += stepH) {
+      ctx.beginPath(); ctx.moveTo(start, y + (end - start)); ctx.lineTo(end, y); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // the next click: a lane -> empty (∅), empty -> removed (×); removed -> lane (+, above)
   if (hover && !hover.dead) {
     ctx.fillStyle = surface;
     ctx.fillRect(hover.start + 1, 0, hover.end - hover.start - 2, top);
-    ctx.fillStyle = COLOURS.peak;
-    ctx.fillText("×", (hover.start + hover.end) / 2, top - 3 * px);
+    ctx.fillStyle = hover.empty ? COLOURS.peak : "#777777";
+    ctx.fillText(hover.empty ? "×" : "∅", (hover.start + hover.end) / 2, top - 3 * px);
   }
   ctx.restore();
 }
@@ -202,11 +236,7 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   };
   let fs = fitSize([left, right]);
   if (show.crowded === false) { // drop the labels that would go out a level, then size for what's left
-    const thin = (m) => {
-      if (!m) return m;
-      let last = -Infinity;
-      return [...m].sort((a, b) => a.y - b.y).filter((q) => (q.y - last >= fs * 1.15 ? ((last = q.y), true) : false));
-    };
+    const thin = (m) => (m ? spaced(m, fs * 1.15) : m); // the brightest reference bands' labels kept first
     left = thin(left); right = thin(right);
     fs = fitSize([left, right]);
   }
@@ -220,7 +250,7 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
   const layout = (marks) => {
     if (!marks) return null;
     ctx.font = font;
-    const textW = Math.max(...marks.map((q) => ctx.measureText(String(q.kda)).width));
+    const textW = Math.max(...marks.map((q) => ctx.measureText(view.size(q.kda)).width));
     const lastY = [];
     const placed = [...marks].sort((a, b) => a.y - b.y).map((q) => {
       let level = 0;
@@ -230,7 +260,7 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
     });
     const levels = Math.max(...placed.map((q) => q.level)) + 1;
     const reach = (level) => tick + level * (textW + 2 * gap + tick);
-    const kw = ctx.measureText("MW (kDa)").width; // sits after a tick's length and a gap, like the sizes
+    const kw = ctx.measureText(view.scaleTitle).width; // sits after a tick's length and a gap, like the sizes
     return { placed, reach, width: Math.ceil(Math.max(reach(levels - 1) + gap + textW, tick + gap + kw) + fs * 0.6) };
   };
   const L = layout(left), R = layout(right);
@@ -308,10 +338,10 @@ export function renderFigure(canvas, grey, w, h, left, right, top = null) {
       ctx.moveTo(x0, y); // flush with the inside of the outline
       ctx.lineTo(end, y);
       ctx.stroke();
-      ctx.fillText(String(q.kda), end + dir * gap, y);
+      ctx.fillText(view.size(q.kda), end + dir * gap, y);
     }
     ctx.textBaseline = "alphabetic";
-    ctx.fillText("MW (kDa)", x0 + dir * (tick + gap), mt - fs * 0.45);
+    ctx.fillText(view.scaleTitle, x0 + dir * (tick + gap), mt - fs * 0.45);
   };
   side(L, ml, -1);
   side(R, ml + w, 1);
@@ -441,7 +471,7 @@ export function drawCalibration(canvas, ladders, points, ink = "#222222") {
     let yLo = Math.min(...all), yHi = Math.max(...all);
     const padY = (yHi - yLo) * 0.06 || 0.1;
     yLo -= padY; yHi += padY;
-    let xLo = Math.min(...L.ys), xHi = Math.max(...L.ys);
+    let xLo = Math.min(...L.ys, ...points[li].map((p) => p.y)), xHi = Math.max(...L.ys, ...points[li].map((p) => p.y));
     const padX = (xHi - xLo) * 0.04 || 10;
     xLo -= padX; xHi += padX;
     const X = (r) => m.l + ((r - xLo) / (xHi - xLo)) * pw;
@@ -464,11 +494,11 @@ export function drawCalibration(canvas, ladders, points, ink = "#222222") {
       ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(m.l + pw, y); ctx.stroke();
       ctx.globalAlpha = 1;
       ctx.beginPath(); ctx.moveTo(m.l - 4, y); ctx.lineTo(m.l, y); ctx.stroke();
-      if (Math.abs(y - lastTick) >= 11) { ctx.fillText(String(k), m.l - 6, y); lastTick = y; } // crowded: tick only
+      if (Math.abs(y - lastTick) >= 11) { ctx.fillText(view.size(k), m.l - 6, y); lastTick = y; } // crowded: tick only
     });
     ctx.save();
     ctx.translate(14, oy + m.t + ph / 2); ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = "center"; ctx.fillText("MW (kDa, log scale)", 0, 0);
+    ctx.textAlign = "center"; ctx.fillText(view.logTitle, 0, 0);
     ctx.restore();
     ctx.textAlign = "center"; ctx.textBaseline = "top";
     const step = 10 ** Math.floor(Math.log10((xHi - xLo) / 4));
@@ -490,7 +520,7 @@ export function drawCalibration(canvas, ladders, points, ink = "#222222") {
     ctx.beginPath(); ctx.moveTo(X(xLo), clipY(a + b * xLo)); ctx.lineTo(X(xHi), clipY(a + b * xHi)); ctx.stroke();
     ctx.restore();
     ctx.fillStyle = ink; ctx.font = font(12); ctx.textAlign = "right"; ctx.textBaseline = "top";
-    ctx.fillText(`best-fit line: log MW = ${b.toFixed(5)} × distance + ${a.toFixed(3)},  r² = ${r2.toFixed(3)}`, m.l + pw - 4, oy + m.t + 2);
+    ctx.fillText(`best-fit line: log ${view.logWord} = ${b.toFixed(5)} × distance + ${a.toFixed(3)},  r² = ${r2.toFixed(3)}`, m.l + pw - 4, oy + m.t + 2);
     // the curve masses are read from
     ctx.strokeStyle = COLOURS.profile; ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -511,6 +541,25 @@ export function drawCalibration(canvas, ladders, points, ink = "#222222") {
     ctx.font = font(11); ctx.textAlign = "left"; ctx.textBaseline = "middle";
     const taken = []; // label boxes so far: a label that would overlap one moves up or down
     const overlaps = (b) => taken.some((t) => b.x0 < t.x1 && t.x0 < b.x1 && b.y0 < t.y1 && t.y0 < b.y1);
+    // a band read off its own lane's curve (two ladders blended): that curve, thin, through it
+    ctx.save(); ctx.globalAlpha = 0.6; ctx.lineWidth = 1;
+    for (const p of points[li]) {
+      if (!p.curve) continue;
+      ctx.beginPath();
+      for (let r = Math.max(p.curve.y0, xLo), first = true; r <= Math.min(p.curve.y1, xHi); r += Math.max(0.5, (p.curve.y1 - p.curve.y0) / 200)) {
+        const x = X(r), y = Y(p.curve.f(r));
+        first ? ctx.moveTo(x, y) : ctx.lineTo(x, y); first = false;
+      }
+      ctx.stroke();
+    }
+    // extrapolated past the ladder's end: the straight line it was read from, dotted
+    ctx.setLineDash([2, 3]);
+    for (const p of points[li]) {
+      if (!p.from) continue;
+      ctx.beginPath(); ctx.moveTo(X(p.from.y), Y(p.from.lk)); ctx.lineTo(X(p.y), Y(Math.log10(p.kda))); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
     for (const p of points[li]) {
       const x = X(p.y), y = Y(Math.log10(p.kda));
       if (p.pm > 0) {

@@ -2,7 +2,7 @@
 // find_bands (checked against it by tests/parity.html). Images are greyscale
 // Float64Arrays, 0 = black, 1 = white, row-major; bands are dark on light.
 
-import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=f78e7ddd";
+import { findPeaks, gaussian1d, mad, median, minFilter1d, roundHalfEven } from "./signal.js?v=12a48e35";
 
 export const DEFAULTS = { core: 0.25, smooth: 1.0, noiseRows: 61, k: 6, sep: 5, satLevel: 0.03, satFrac: 0.2 };
 
@@ -221,7 +221,7 @@ function columnContent(img, w, h) {
 // them that aren't lanes; n and gaps count lanes only. On gel_02:
 // 13 lanes, dividers within 20 px of the hand-placed ones; on gel_03 (most lanes
 // empty): 9 lanes, one per well.
-export function countLanes(img, w, h) {
+export function countLanes(img, w, h, pitchHint = null) {
   const s = gaussian1d(columnContent(img, w, h), 2);
   const cs = new Float64Array(w + 1);
   for (let x = 0; x < w; x++) cs[x + 1] = cs[x] + s[x];
@@ -230,7 +230,9 @@ export function countLanes(img, w, h) {
     return b > a ? (cs[b] - cs[a]) / (b - a) : NaN;
   };
   let best = { score: -Infinity, p: w, x0: 0 };
-  for (let p = Math.max(8, w / 40); p <= w / 2; p *= 1.01) {
+  // with the wells' spacing (findWells), lane widths within 12% of it only
+  const pLo = pitchHint ? Math.max(4, 0.88 * pitchHint) : Math.max(8, w / 40), pHi = pitchHint ? 1.12 * pitchHint : w / 2;
+  for (let p = pLo; p <= pHi; p *= 1.01) {
     const dx = Math.max(1, p / 40);
     for (let x0 = 0; x0 < p; x0 += dx) { // x0: one divider
       let score = 0;
@@ -259,14 +261,22 @@ export function countLanes(img, w, h) {
   const lo = sorted[Math.floor(0.05 * (w - 1))], hi = sorted[Math.floor(0.95 * (w - 1))];
   const empty = (a, b) => !(mean(a + 0.3 * (b - a), b - 0.3 * (b - a)) > lo + 0.04 * (hi - lo));
   let first = 0, last = bounds.length - 2; // lanes: spaces first..last; the rest is dead space
-  while (first < last && empty(bounds[first], bounds[first + 1])) first++;
-  while (last > first && empty(bounds[last], bounds[last + 1])) last--;
+  // empty lanes at the edges are margin, unless the wells say they're unloaded wells (lanes,
+  // which DNA mode marks empty)
+  while (!pitchHint && first < last && empty(bounds[first], bounds[first + 1])) first++;
+  while (!pitchHint && last > first && empty(bounds[last], bounds[last + 1])) last--;
   if (last - first >= 2 && first === 0 && bounds[1] < p / 2) { bounds.splice(1, 1); last--; } // thin edge lane
   if (last - first >= 2 && last === bounds.length - 2 && w - bounds[last] < p / 2) { bounds.splice(last, 1); last--; }
   const dead = [];
   for (let i = 0; i < bounds.length - 1; i++) if (i < first || i > last) dead.push(i);
-  return { n: last - first + 1, pitch: p, gaps: bounds.slice(first + 1, last + 1), bounds, dead };
+  // fill: each space's middle 40% on the same scale (0 = the 5th percentile column, 1 =
+  // the 95th). On Nicole's agarose gels empty wells are at most 0.04, loaded lanes (one
+  // band) at least 0.12, a faint smear on nicole_3 0.06; DNA mode calls a lane under
+  // EMPTY_FILL empty (click above it to change).
+  const fill = bounds.slice(0, -1).map((a, i) => (mean(a + 0.3 * (bounds[i + 1] - a), bounds[i + 1] - 0.3 * (bounds[i + 1] - a)) - lo) / (hi - lo || 1));
+  return { n: last - first + 1, pitch: p, gaps: bounds.slice(first + 1, last + 1), bounds, dead, fill };
 }
+export const EMPTY_FILL = 0.05;
 
 // Lane boundaries for n lanes across an image, chosen together like the teeth of a comb:
 // the n-1 dividers sit on the palest columns (least band content: gaps between lanes) they can, while every
@@ -311,4 +321,223 @@ export function findLanes(img, w, h, n) {
   const div = [end];
   for (let k = n - 2; k >= 1; k--) div.unshift(from[k][div[0]]);
   return [0, ...div, w];
+}
+
+// The gel slab in a gel doc photo (a DNA gel glowing on black): rows and columns whose
+// median brightness is over halfway from the 5th to the 95th percentile of those
+// medians, trimmed by 1.5% to drop the slab's bright rim. grey: 0 black - 1 white.
+// Returns {x0, y0, x1, y1} (inclusive). As scoping/gel_slab.py; cropped to the slab,
+// countLanes gets Nicole's agarose gels right, where the whole photo misled it.
+export function gelSlab(grey, w, h) {
+  const range = (prof) => {
+    const sorted = [...prof].sort((a, b) => a - b);
+    const lo = sorted[Math.floor(0.05 * (sorted.length - 1))], hi = sorted[Math.floor(0.95 * (sorted.length - 1))];
+    let a = -1, b = -1;
+    prof.forEach((v, i) => { if (v > lo + 0.5 * (hi - lo)) { if (a < 0) a = i; b = i; } });
+    if (a < 0) return [0, prof.length - 1];
+    const trim = Math.round(0.015 * (b - a + 1));
+    return [a + trim, b - trim];
+  };
+  const step = Math.max(1, Math.floor(Math.min(w, h) / 400)); // sample for speed
+  const rows = [], cols = [];
+  for (let y = 0; y < h; y++) {
+    const v = [];
+    for (let x = 0; x < w; x += step) { const q = grey[y * w + x]; if (!Number.isNaN(q)) v.push(q); }
+    rows.push(v.length ? median(v) : 0);
+  }
+  for (let x = 0; x < w; x++) {
+    const v = [];
+    for (let y = 0; y < h; y += step) { const q = grey[y * w + x]; if (!Number.isNaN(q)) v.push(q); }
+    cols.push(v.length ? median(v) : 0);
+  }
+  const [y0, y1] = range(rows), [x0, x1] = range(cols);
+  // only a slab on a black surround: at least 60% of the photo each way (a dim photo whose
+  // gel fills the frame otherwise gives just the strip of bright bands) and 1.3 x brighter
+  // than what's outside it (the lab's slabs: 1.46 x on the dimmest, nicole_1, 8-270 x on
+  // the rest; gels filling the frame: at most 2 x, and those also fail on size but one at 1.16 x)
+  const whole = { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
+  if (y1 - y0 + 1 < 0.6 * h || x1 - x0 + 1 < 0.6 * w) return whole;
+  const inner = [], outer = [];
+  for (let y = 0; y < h; y += step) for (let x = 0; x < w; x += step) {
+    const q = grey[y * w + x];
+    if (Number.isNaN(q)) continue;
+    (y >= y0 && y <= y1 && x >= x0 && x <= x1 ? inner : outer).push(q);
+  }
+  if (outer.length && median(inner) < 1.3 * Math.max(median(outer), 1e-3)) return whole;
+  return { x0, y0, x1, y1 };
+}
+
+// A gel photographed on a plain tray, light box or bench (lighter or darker than the gel),
+// as scoping/gel_slab.py gel_box. On a copy block-averaged to ~400 px on the short side and
+// smoothed (sigma 4): the background is a gentle slope, a plane fitted to the outer 3%
+// (refitted without outliers); the gel is what differs from it by more than half the gel's
+// own level (the 70th percentile of what's clearly different, towards the background, so
+// bands don't pull it away and a pale gel still counts). Columns at least 35% gel (of the
+// most), then rows at least 35% gel within them, bridging gaps up to 15% (a dark ladder or
+// smear); the box must be at least 70% gel (a trimmed scan's bands are scattered: 0.52 on
+// gel_02; gels on a tray 0.72-0.99), at least 15% of the image either way, and the gel at
+// least 0.06 from the background. A side whose outer strip is half gel or more isn't
+// cropped; others get a 1.5% margin, 6% at the top (a pale stacking gel near the wells can
+// read as tray). Nothing found: the whole image. Returns {x0, y0, x1, y1} (inclusive).
+export function gelBox(grey, w, h) {
+  const EDGE = 0.03, MIN_STEP = 0.06, MARGIN = 0.015, TOP_MARGIN = 0.06, MIN_SIZE = 0.15, BRIDGE = 0.15;
+  const BLUR = 4, KEEP = 0.35, EDGE_GEL = 0.5, SOLID = 0.7;
+  const whole = { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
+  const f = Math.max(1, Math.floor(Math.min(h, w) / 400));
+  const hs = Math.floor(h / f), ws = Math.floor(w / f);
+  let small = new Float64Array(hs * ws);
+  for (let y = 0; y < hs; y++) for (let x = 0; x < ws; x++) {
+    let t = 0, n = 0;
+    for (let dy = 0; dy < f; dy++) for (let dx = 0; dx < f; dx++) {
+      const v = grey[(y * f + dy) * w + x * f + dx];
+      if (!Number.isNaN(v)) { t += v; n++; }
+    }
+    small[y * ws + x] = n ? t / n : 1;
+  }
+  // separable gaussian blur
+  for (let y = 0; y < hs; y++) small.set(gaussian1d(small.subarray(y * ws, (y + 1) * ws), BLUR), y * ws);
+  const col = new Float64Array(hs);
+  for (let x = 0; x < ws; x++) {
+    for (let y = 0; y < hs; y++) col[y] = small[y * ws + x];
+    const b = gaussian1d(col, BLUR);
+    for (let y = 0; y < hs; y++) small[y * ws + x] = b[y];
+  }
+  const blur = small;
+  const k = Math.max(2, Math.floor(EDGE * Math.min(hs, ws)));
+  const ringIdx = [];
+  for (let y = 0; y < hs; y++) for (let x = 0; x < ws; x++)
+    if (y < k || y >= hs - k || x < k || x >= ws - k) ringIdx.push(y * ws + x);
+  // plane a + b x/ws + c y/hs, least squares (normal equations), refitted without outliers
+  let coef = [median(ringIdx.map((i) => blur[i])), 0, 0], sd = 0.004, use = ringIdx;
+  for (let it = 0; it < 3; it++) {
+    const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], v = [0, 0, 0];
+    for (const i of use) {
+      const r = [1, (i % ws) / ws, Math.floor(i / ws) / hs];
+      for (let a = 0; a < 3; a++) { v[a] += r[a] * blur[i]; for (let b = 0; b < 3; b++) M[a][b] += r[a] * r[b]; }
+    }
+    const sol = solve3(M, v);
+    if (sol) coef = sol;
+    const res = ringIdx.map((i) => blur[i] - (coef[0] + coef[1] * (i % ws) / ws + coef[2] * Math.floor(i / ws) / hs));
+    const used = res.filter((_, j) => use.includes(ringIdx[j]));
+    const m = median(used);
+    sd = Math.max(0.004, 1.4826 * median(used.map((r) => Math.abs(r - m))));
+    use = ringIdx.filter((_, j) => Math.abs(res[j]) < 3 * sd);
+    if (use.length < 10) break;
+  }
+  const diff = new Float64Array(hs * ws);
+  for (let y = 0; y < hs; y++) for (let x = 0; x < ws; x++)
+    diff[y * ws + x] = blur[y * ws + x] - (coef[0] + coef[1] * x / ws + coef[2] * y / hs);
+  const off = Math.max(0.02, 4 * sd);
+  const darker = [], lighter = [];
+  for (const d of diff) { if (d < -off) darker.push(d); else if (d > off) lighter.push(d); }
+  const sign = darker.length >= lighter.length ? -1 : 1;
+  const other = (sign < 0 ? darker : lighter).sort((a, b) => a - b);
+  if (other.length < 0.05 * diff.length) return whole;
+  const pct = (a, q) => a[Math.min(a.length - 1, Math.max(0, Math.round(q * (a.length - 1))))];
+  const level = pct(other, sign < 0 ? 0.7 : 0.3);
+  if (Math.abs(level) < MIN_STEP) return whole;
+  const gel = new Uint8Array(hs * ws);
+  let nGel = 0;
+  for (let i = 0; i < diff.length; i++) if (diff[i] * sign > Math.abs(level) / 2) { gel[i] = 1; nGel++; }
+  if (!nGel || nGel === gel.length) return whole;
+  // the longest run of indices with frac >= keep, bridging gaps up to gap: [a, b) or null
+  const run = (frac, keep, gap) => {
+    let best = null, start = -1, prev = -1;
+    frac.forEach((v, i) => {
+      if (v < keep) return;
+      if (start >= 0 && i - prev <= gap) { prev = i; return; }
+      if (start >= 0 && (!best || prev + 1 - start > best[1] - best[0])) best = [start, prev + 1];
+      start = prev = i;
+    });
+    if (start >= 0 && (!best || prev + 1 - start > best[1] - best[0])) best = [start, prev + 1];
+    return best;
+  };
+  const colFrac = new Float64Array(ws);
+  for (let y = 0; y < hs; y++) for (let x = 0; x < ws; x++) colFrac[x] += gel[y * ws + x] / hs;
+  const cols = run(colFrac, KEEP * Math.max(...colFrac), Math.max(2, Math.floor(BRIDGE * ws)));
+  if (!cols) return whole;
+  const rowFrac = new Float64Array(hs);
+  for (let y = 0; y < hs; y++) { let t = 0; for (let x = cols[0]; x < cols[1]; x++) t += gel[y * ws + x]; rowFrac[y] = t / (cols[1] - cols[0]); }
+  const rows = run(rowFrac, KEEP, Math.max(2, Math.floor(BRIDGE * hs)));
+  if (!rows) return whole;
+  let [y0, y1] = rows, [x0, x1] = cols;
+  if (y1 - y0 < MIN_SIZE * hs || x1 - x0 < MIN_SIZE * ws) return whole;
+  let inBox = 0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) inBox += gel[y * ws + x];
+  if (inBox / ((y1 - y0) * (x1 - x0)) < SOLID) return whole;
+  // each side: cropped only if the photo's edge there is background, not gel
+  const strip = (ya, yb, xa, xb) => { let t = 0; for (let y = ya; y < yb; y++) for (let x = xa; x < xb; x++) t += gel[y * ws + x]; return t / ((yb - ya) * (xb - xa)); };
+  const top = strip(0, k, 0, ws) < EDGE_GEL, bottom = strip(hs - k, hs, 0, ws) < EDGE_GEL;
+  const left = strip(0, hs, 0, k) < EDGE_GEL, right = strip(0, hs, ws - k, ws) < EDGE_GEL;
+  const my = Math.round(MARGIN * (y1 - y0)), mt = Math.round(TOP_MARGIN * (y1 - y0)), mx = Math.round(MARGIN * (x1 - x0));
+  y0 = top ? Math.max(0, y0 - mt) : 0; y1 = bottom ? Math.min(hs, y1 + my) : hs;
+  x0 = left ? Math.max(0, x0 - mx) : 0; x1 = right ? Math.min(ws, x1 + mx) : ws;
+  return { x0: x0 * f, y0: y0 * f, x1: (x1 < ws ? x1 * f : w) - 1, y1: (y1 < hs ? y1 * f : h) - 1 };
+}
+
+// 3x3 linear system (Cramer's rule); null if singular
+function solve3(M, v) {
+  const det = (A) => A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+    + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+  const d = det(M);
+  if (Math.abs(d) < 1e-12) return null;
+  return [0, 1, 2].map((c) => det(M.map((row, r) => row.map((x, j) => (j === c ? v[r] : x)))) / d);
+}
+
+// Wells: the comb's slots along the top of a gel, loaded or not, which give the lane
+// spacing where the bands can't (a DNA gel with a few wells loaded looks, from its bands,
+// like one with lanes two or three times as wide). As scoping/wells.py find_wells. img:
+// the analysed area, dark bands on light. In the top 35% of rows, each band of rows (2% of
+// the height, in steps of half that) is averaged, smoothed (sigma 1.5) and its running
+// median over 1/8 of the width taken off; the teeth of gel between wells (dips) or the
+// wells (peaks), whichever is regular, are the peaks standing out by 3 x the profile's
+// spread (at least 0.003: a dark 8-bit photo is quantised), at least w/80 apart. A row is at
+// least 6 regularly spaced (gaps within 20% of their median, the odd double gap allowed);
+// the band with the most wins. Returns {pitch, row, n} or null. The lane finder uses a row
+// of at least 8 (USE_WELLS): on the lab's gels, 11h30's spacing came out 74-77 px against
+// 78 by eye, Nicole's 51-53 against 52.
+export const USE_WELLS = 8;
+export function findWells(img, w, h) {
+  const TOP = 0.35, BAND = 0.02, PROM = 3, NOISE_FLOOR = 0.003, MIN_WELLS = 6, REGULAR = 0.2;
+  const band = Math.max(3, Math.floor(BAND * h)), win = Math.max(9, Math.floor(w / 8)) | 1, dist = Math.max(3, Math.floor(w / 80));
+  const regular = (xs) => {
+    if (xs.length < MIN_WELLS) return null;
+    const gaps = xs.slice(1).map((x, i) => x - xs[i]);
+    let med = median(gaps);
+    for (let it = 0; it < 2; it++) {
+      const one = gaps.filter((g) => Math.abs(g - med) <= REGULAR * med);
+      if (one.length < MIN_WELLS - 1) return null;
+      med = median(one);
+    }
+    const ok = gaps.filter((g) => Math.abs(g - med) <= REGULAR * med).length;
+    const okOrDouble = gaps.filter((g) => Math.abs(g - med) <= REGULAR * med || Math.abs(g - 2 * med) <= REGULAR * 2 * med).length;
+    return okOrDouble >= 0.85 * gaps.length && ok >= 0.6 * gaps.length ? med : null;
+  };
+  // peaks with prominence >= minProm, then thinned to at least dist apart, tallest first (scipy)
+  const peaks = (x, minProm) => {
+    const found = findPeaks(x, minProm).sort((a, b) => x[b.i] - x[a.i]);
+    const kept = [];
+    for (const p of found) if (!kept.some((q) => Math.abs(q - p.i) < dist)) kept.push(p.i);
+    return kept.sort((a, b) => a - b);
+  };
+  let best = null;
+  for (let y = 0; y + band < TOP * h; y += Math.max(1, band >> 1)) {
+    const prof = new Float64Array(w);
+    for (let r = y; r < y + band; r++) for (let x = 0; x < w; x++) { const v = img[r * w + x]; prof[x] += (Number.isNaN(v) ? 1 : v) / band; }
+    const sm = gaussian1d(prof, 1.5);
+    const hp = new Float64Array(w), buf = [];
+    for (let x = 0; x < w; x++) {
+      buf.length = 0;
+      for (let j = x - (win >> 1); j <= x + (win >> 1); j++) buf.push(sm[Math.min(w - 1, Math.max(0, j))]);
+      hp[x] = sm[x] - median(buf);
+    }
+    const m = median(hp);
+    const sd = Math.max(NOISE_FLOOR, 1.4826 * median(Array.from(hp, (v) => Math.abs(v - m))));
+    for (const sign of [-1, 1]) {
+      const xs = peaks(hp.map((v) => sign * v), PROM * sd);
+      const pitch = regular(xs);
+      if (pitch !== null && (!best || xs.length > best.n)) best = { pitch, row: y + (band >> 1), n: xs.length };
+    }
+  }
+  return best;
 }

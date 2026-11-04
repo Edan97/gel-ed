@@ -1,8 +1,10 @@
-// Ladders (molecular-weight standards) the page knows about. Sizes in kDa, top of the
-// gel (largest) first. Add entries here; the ladder cards' dropdown lists them in order,
-// then "Custom". A card's sizes start as listed here
-// and can be edited on the card (Custom starts empty). short: the name written above the
-// ladder's lane on the figure; supplier and catalogue number go in the caption.
+// Ladders (size standards) the page knows about, top of the gel (largest) first: protein
+// ladders in kDa, DNA ladders (dna: true) in bp. Add entries here; the ladder cards'
+// dropdown lists the current mode's in order, then "Custom". A card's sizes start as
+// listed here and can be edited on the card (Custom starts empty). short: the name
+// written above the ladder's lane on the figure; supplier and catalogue number go in the
+// caption. ng: DNA per band at the recommended load, where the supplier gives it (the
+// brighter reference bands help pick the ladder's bands).
 
 export const LADDERS = {
   // first = the default for new ladder cards
@@ -35,5 +37,14 @@ export const LADDERS = {
     name: "BenchMark™ Protein Ladder",
     short: "BenchMark", supplier: "Thermo Fisher Scientific", catalog: "10747012",
     kda: [220, 160, 120, 100, 90, 80, 70, 60, 50, 40, 30, 25, 20, 15, 10],
+  },
+  // DNA: the first is the default in DNA mode. NEB's sheet for N0550 (as the 2-Log
+  // ladder, same product): 19 bands, ng per band for 1 µg; 3.0, 1.0 and 0.5 kb brighter.
+  "neb-1kb-plus": {
+    dna: true,
+    name: "Quick-Load® Purple 1 kb Plus DNA Ladder",
+    short: "1 kb Plus", supplier: "NEB", catalog: "N0550S",
+    kda: [10000, 8000, 6000, 5000, 4000, 3000, 2000, 1500, 1200, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100],
+    ng: [40, 40, 48, 40, 32, 120, 40, 57, 45, 122, 34, 31, 27, 23, 124, 49, 37, 32, 61],
   },
 };

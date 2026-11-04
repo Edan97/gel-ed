@@ -4,16 +4,30 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gel-ed · gel and blot band finder</title>
-  <link rel="stylesheet" href="css/style.css?v=f78e7ddd">
-  <script type="module" src="js/app.js?v=f78e7ddd"></script>
+  <link rel="stylesheet" href="css/style.css?v=12a48e35">
+  <script type="module" src="js/app.js?v=12a48e35"></script>
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>gel-ed <span id="version" class="version" title="f78e7ddd">version 44</span></h1>
+      <h1>gel-ed <span id="version" class="version" title="12a48e35">version 45</span></h1>
       <p class="lede">Straighten and crop a gel or blot image, then see each lane's profile and the bands found in it.
         Everything runs in your browser; images are never uploaded.</p>
     </div>
+    <!-- Protein / DNA switch. DNA icon: Lucide "dna", Copyright (c) 2026 Lucide Icons and
+         Contributors, ISC License (full notice in README.md, Credits); protein icon (an alpha
+         helix) drawn for gel-ed. -->
+    <label class="mode-toggle" title="Protein: SDS-PAGE and western blots, ladders in kDa. DNA: agarose gels, ladders in bp; light-on-black photos are read inverted, shown as photographed and cropped to the gel.">
+      <span class="mode-name mode-name-protein">Protein mode</span>
+      <input type="checkbox" id="mode-toggle" role="switch" aria-label="DNA gel (off: protein gel)">
+      <span class="mode-track" aria-hidden="true">
+        <span class="mode-ghost mode-ghost-protein"><svg class="icon-protein" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><g stroke-width="1.8" opacity="0.5"><path d="M2.76 14.88 3.16 14.79 3.85 15.00 4.80 15.46 5.93 16.11 7.15 16.85 8.38 17.59 9.51 18.23 10.45 18.70 11.15 18.91 11.55 18.82" /><path d="M7.61 10.03 8.00 9.94 8.70 10.15 9.64 10.61 10.77 11.26 12.00 12.00 13.23 12.74 14.36 13.39 15.30 13.85 16.00 14.06 16.39 13.97" /><path d="M12.45 5.18 12.85 5.09 13.55 5.30 14.49 5.77 15.62 6.41 16.85 7.15 18.07 7.89 19.20 8.54 20.15 9.00 20.84 9.21 21.24 9.12" /><path d="M2.76 14.88 3.16 14.79 3.85 15.00 4.80 15.46 5.93 16.11 7.15 16.85 8.38 17.59 9.51 18.23 10.45 18.70 11.15 18.91 11.55 18.82" /><path d="M7.61 10.03 8.00 9.94 8.70 10.15 9.64 10.61 10.77 11.26 12.00 12.00 13.23 12.74 14.36 13.39 15.30 13.85 16.00 14.06 16.39 13.97" /><path d="M12.45 5.18 12.85 5.09 13.55 5.30 14.49 5.77 15.62 6.41 16.85 7.15 18.07 7.89 19.20 8.54 20.15 9.00 20.84 9.21 21.24 9.12" /></g><path d="M6.70 23.67 6.78 23.27 6.57 22.57 6.11 21.63 5.47 20.50 4.73 19.27 3.99 18.05 3.34 16.92 2.88 15.97 2.67 15.28 2.76 14.88" /><path d="M11.55 18.82 11.63 18.42 11.42 17.73 10.96 16.78 10.32 15.65 9.58 14.42 8.83 13.20 8.19 12.07 7.73 11.12 7.52 10.43 7.61 10.03" /><path d="M16.39 13.97 16.48 13.57 16.27 12.88 15.81 11.93 15.17 10.80 14.42 9.58 13.68 8.35 13.04 7.22 12.58 6.27 12.37 5.58 12.45 5.18" /><path d="M21.24 9.12 21.33 8.72 21.12 8.03 20.66 7.08 20.01 5.95 19.27 4.73 18.53 3.50 17.89 2.37 17.43 1.43 17.22 0.73 17.30 0.33" /><path d="M6.70 23.67 6.78 23.27 6.57 22.57 6.11 21.63 5.47 20.50 4.73 19.27 3.99 18.05 3.34 16.92 2.88 15.97 2.67 15.28 2.76 14.88" /><path d="M11.55 18.82 11.63 18.42 11.42 17.73 10.96 16.78 10.32 15.65 9.58 14.42 8.83 13.20 8.19 12.07 7.73 11.12 7.52 10.43 7.61 10.03" /><path d="M16.39 13.97 16.48 13.57 16.27 12.88 15.81 11.93 15.17 10.80 14.42 9.58 13.68 8.35 13.04 7.22 12.58 6.27 12.37 5.58 12.45 5.18" /><path d="M21.24 9.12 21.33 8.72 21.12 8.03 20.66 7.08 20.01 5.95 19.27 4.73 18.53 3.50 17.89 2.37 17.43 1.43 17.22 0.73 17.30 0.33" /></svg></span>
+        <span class="mode-ghost mode-ghost-dna"><svg class="icon-dna" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 16 1.5 1.5" /><path d="m14 8-1.5-1.5" /><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993" /><path d="m16.5 10.5 1 1" /><path d="m17 6-2.891-2.891" /><path d="M2 15c6.667-6 13.333 0 20-6" /><path d="m20 9 .891.891" /><path d="M3.109 14.109 4 15" /><path d="m6.5 12.5 1 1" /><path d="m7 18 2.891 2.891" /><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993" /></svg></span>
+        <span class="mode-thumb"><svg class="icon-protein" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><g stroke-width="1.8" opacity="0.5"><path d="M2.76 14.88 3.16 14.79 3.85 15.00 4.80 15.46 5.93 16.11 7.15 16.85 8.38 17.59 9.51 18.23 10.45 18.70 11.15 18.91 11.55 18.82" /><path d="M7.61 10.03 8.00 9.94 8.70 10.15 9.64 10.61 10.77 11.26 12.00 12.00 13.23 12.74 14.36 13.39 15.30 13.85 16.00 14.06 16.39 13.97" /><path d="M12.45 5.18 12.85 5.09 13.55 5.30 14.49 5.77 15.62 6.41 16.85 7.15 18.07 7.89 19.20 8.54 20.15 9.00 20.84 9.21 21.24 9.12" /><path d="M2.76 14.88 3.16 14.79 3.85 15.00 4.80 15.46 5.93 16.11 7.15 16.85 8.38 17.59 9.51 18.23 10.45 18.70 11.15 18.91 11.55 18.82" /><path d="M7.61 10.03 8.00 9.94 8.70 10.15 9.64 10.61 10.77 11.26 12.00 12.00 13.23 12.74 14.36 13.39 15.30 13.85 16.00 14.06 16.39 13.97" /><path d="M12.45 5.18 12.85 5.09 13.55 5.30 14.49 5.77 15.62 6.41 16.85 7.15 18.07 7.89 19.20 8.54 20.15 9.00 20.84 9.21 21.24 9.12" /></g><path d="M6.70 23.67 6.78 23.27 6.57 22.57 6.11 21.63 5.47 20.50 4.73 19.27 3.99 18.05 3.34 16.92 2.88 15.97 2.67 15.28 2.76 14.88" /><path d="M11.55 18.82 11.63 18.42 11.42 17.73 10.96 16.78 10.32 15.65 9.58 14.42 8.83 13.20 8.19 12.07 7.73 11.12 7.52 10.43 7.61 10.03" /><path d="M16.39 13.97 16.48 13.57 16.27 12.88 15.81 11.93 15.17 10.80 14.42 9.58 13.68 8.35 13.04 7.22 12.58 6.27 12.37 5.58 12.45 5.18" /><path d="M21.24 9.12 21.33 8.72 21.12 8.03 20.66 7.08 20.01 5.95 19.27 4.73 18.53 3.50 17.89 2.37 17.43 1.43 17.22 0.73 17.30 0.33" /><path d="M6.70 23.67 6.78 23.27 6.57 22.57 6.11 21.63 5.47 20.50 4.73 19.27 3.99 18.05 3.34 16.92 2.88 15.97 2.67 15.28 2.76 14.88" /><path d="M11.55 18.82 11.63 18.42 11.42 17.73 10.96 16.78 10.32 15.65 9.58 14.42 8.83 13.20 8.19 12.07 7.73 11.12 7.52 10.43 7.61 10.03" /><path d="M16.39 13.97 16.48 13.57 16.27 12.88 15.81 11.93 15.17 10.80 14.42 9.58 13.68 8.35 13.04 7.22 12.58 6.27 12.37 5.58 12.45 5.18" /><path d="M21.24 9.12 21.33 8.72 21.12 8.03 20.66 7.08 20.01 5.95 19.27 4.73 18.53 3.50 17.89 2.37 17.43 1.43 17.22 0.73 17.30 0.33" /></svg><svg class="icon-dna" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 16 1.5 1.5" /><path d="m14 8-1.5-1.5" /><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993" /><path d="m16.5 10.5 1 1" /><path d="m17 6-2.891-2.891" /><path d="M2 15c6.667-6 13.333 0 20-6" /><path d="m20 9 .891.891" /><path d="M3.109 14.109 4 15" /><path d="m6.5 12.5 1 1" /><path d="m7 18 2.891 2.891" /><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993" /></svg></span>
+      </span>
+      <span class="mode-name mode-name-dna">DNA mode</span>
+      <span class="new" title="New in this version">new</span>
+    </label>
   </header>
 
   <main>
@@ -82,8 +96,10 @@
           </div>
           <div class="view">
             <div id="edit-stage" class="stage"><canvas id="edit-canvas"></canvas></div>
-            <p class="hint">The whole image is analysed; blank corners from rotating contribute nothing.
-              Drag the rectangle's corners and edges to leave something out (e.g. labels above the lanes).</p>
+            <p class="hint">The rectangle is what's analysed. On loading, a photo with plain background round
+              the gel (a light box, scanner bed or bench) starts cropped to the gel; otherwise it's the whole
+              image. Blank corners from rotating contribute nothing. Drag the rectangle's corners and edges to
+              change it (e.g. to leave out labels above the lanes).</p>
           </div>
         </div>
       </details>
@@ -101,7 +117,10 @@
               </div>
               <p class="hint"><strong>Find lanes</strong> fits evenly spaced lanes to where the bands are (empty lanes
                 between loaded ones count; empty edges start as empty space); straighten the gel first, as tilted lanes blur the gaps.
-                Above the gel, click a lane's number (×) to make it empty space, or a <strong>+</strong> to make empty space a lane. Typing a number places exactly that many.
+                Above the gel, clicking a lane's number steps it through: a lane → <strong>empty</strong> (∅: nothing
+                loaded; it keeps its number, is hatched, and is left off the figure unless "annotate empty lanes" is
+                ticked) → <strong>removed</strong> (×: space between lanes) → a lane again (<strong>+</strong>). On DNA
+                gels empty lanes are found for you. Typing a number places exactly that many.
                 Drag the dashed dividers to adjust.</p>
             </fieldset>
             <fieldset>
@@ -174,17 +193,28 @@
             <details class="sub-details" open>
               <summary>Method <span class="new" title="New in this version">new</span></summary>
               <p class="hint">Used in the figure caption.</p>
-              <label class="row method-row">Type
+              <label class="row method-row protein-only">Type
                 <select id="method-type">
                   <option value="sds" selected>SDS-PAGE</option>
                   <option value="western">Western blot</option>
                 </select></label>
-              <label class="row method-row" id="stain-row" hidden>Stain <input type="text" id="stain" value="Coomassie"></label>
-              <div id="antibody-box">
+              <label class="row method-row protein-only" id="stain-row" hidden>Stain <input type="text" id="stain" value="Coomassie"></label>
+              <div id="antibody-box" class="protein-only">
                 <div id="antibodies" class="antibodies"></div>
                 <button type="button" id="add-antibody" class="btn">Add antibody</button>
               </div>
-              <div id="run-fields" class="run-fields">
+              <div id="dna-fields" class="run-fields dna-only">
+                <label>Agarose <span class="unit-box"><input type="text" data-dna="agarose" inputmode="decimal" placeholder="1"><span class="unit">%</span></span></label>
+                <label>Buffer <input type="text" data-dna="buffer" list="dna-buffer-list" placeholder="e.g. TAE"></label>
+                <label>Stain <input type="text" data-dna="stain" list="dna-stain-list" class="wide" placeholder="e.g. SYBR Safe (1× in the gel)"></label>
+                <label>Loading dye <input type="text" data-dna="dye" class="wide" placeholder="e.g. Gel Loading Dye, Purple (6×) (NEB, B7024S), to 1×"></label>
+                <label>Run at <span class="unit-box"><input type="text" data-dna="volts" inputmode="decimal" placeholder="100"><span class="unit">V</span></span>
+                  for <span class="unit-box"><input type="text" data-dna="minutes" inputmode="decimal" placeholder="40"><span class="unit">min</span></span></label>
+                <label>Imaged on <input type="text" data-dna="imager" placeholder="e.g. ChemiDoc (Bio-Rad)"></label>
+              </div>
+              <datalist id="dna-buffer-list"><option value="TAE"><option value="TBE"></datalist>
+              <datalist id="dna-stain-list"><option value="SYBR Safe (1× in the gel)"><option value="GelRed (1× in the gel)"><option value="ethidium bromide (0.5 µg/mL in the gel)"></datalist>
+              <div id="run-fields" class="run-fields protein-only">
                 <label>Gel <input type="text" data-run="gel" list="gel-list" class="wide" placeholder="e.g. NuPAGE 4–12% Bis-Tris"></label>
                 <label>Wells <input type="text" data-run="wells" inputmode="numeric" class="num" placeholder="12"></label>
                 <label>Running buffer <input type="text" data-run="buffer" list="buffer-list" placeholder="e.g. MES"></label>
@@ -193,7 +223,7 @@
                 <label>Run at <span class="unit-box"><input type="text" data-run="volts" inputmode="decimal" placeholder="165"><span class="unit">V</span></span>
                   for <span class="unit-box"><input type="text" data-run="minutes" inputmode="decimal" placeholder="35"><span class="unit">min</span></span></label>
               </div>
-              <div id="transfer-fields" class="run-fields" hidden>
+              <div id="transfer-fields" class="run-fields protein-only" hidden>
                 <label>Membrane <input type="text" data-run="membrane" list="membrane-list" placeholder="e.g. nitrocellulose"></label>
                 <label>Transfer <input type="text" data-run="transfer" class="wide" placeholder="e.g. 100 V, 1 h, cold room"></label>
                 <label><input type="checkbox" data-run="ponceau"> Transfer checked with Ponceau S</label>
@@ -214,9 +244,10 @@
                 Groups (e.g. non-reducing / reducing):
                 add a column, name it, then click a lane's cell and drag to cover a continuous run of lanes. Click a
                 lone selected cell to clear it.</p>
+              <label id="annot-empty" class="hint-toggle" hidden><input type="checkbox" id="show-empty-rows"> show empty lanes<span id="annot-empty-count"></span></label>
               <div class="annot-wrap"><table id="annot" class="annot"></table></div>
             </details>
-            <details class="sub-details">
+            <details class="sub-details protein-only">
               <summary>Sample preparation <span class="new" title="New in this version">new</span></summary>
               <p class="hint">Type each lane's concentration and the amount to load: the sample volume is amount ÷
                 concentration, made up to the total with the diluent, loading dye and, in lanes ticked
@@ -235,12 +266,14 @@
             </details>
             <details id="band-annot" class="sub-details" open hidden>
               <summary>Band annotations</summary>
-              <p class="hint">Each band you've marked, with its estimated molecular weight ± uncertainty. Masses are
-                corrected for each lane running differently from the lane next to the ladder (matched on where their
-                profiles rise and fall; assumed to have run like the ladder). The ± combines band position, the band's
-                own width, the ladder bands' width, the leftover mismatch after that correction, and ladder
-                calibration. Where a lane matches poorly, the ± also covers the whole correction (from
-                where the band sits to where it's read).</p>
+              <p class="hint">Each band you've marked, with its estimated size ± uncertainty, read off the standard
+                curve (log size against distance down the gel) at the band's own row. Each lane's curve is the
+                ladder's bands carried straight across to it; with a ladder on each side, along the line joining
+                each size in the two, so a gel that ran a little faster on one side is followed. The ± combines
+                the band's position, its own width, the ladder bands' width and the curve's own uncertainty. A little
+                past either end of the ladder (up to 1.5x its end size), sizes are extrapolated in a straight line,
+                shown with "~" and a ± that grows with the distance; further out, "&gt;" / "&lt;" the end size.
+                Show profiles to see the curves with your bands on them.</p>
               <div class="annot-wrap"><table id="band-table" class="annot band-table"></table></div>
             </details>
           </div>
@@ -261,9 +294,10 @@
           <label title="Untick to leave out ladder sizes too close to the one above to fit beside it (they'd otherwise sit further out on a longer line)"><input type="checkbox" id="show-crowded" checked> crowded sizes</label>
           <label title="Number the lanes above the gel and list them beside it (for long sample names)"><input type="checkbox" id="show-list"> lane list <span class="new" title="New in this version">new</span></label>
           <label title="Write each ladder's name above its lane"><input type="checkbox" id="show-ladder-names"> ladder names <span class="new" title="New in this version">new</span></label>
-          <label title="The MW (kDa) scale beside the gel, from the ladder"><input type="checkbox" id="show-sizes" checked> ladder sizes <span class="new" title="New in this version">new</span></label>
+          <label title="Label lanes marked empty (nothing loaded) on the figure and in the lane list; unticked, they're left blank"><input type="checkbox" id="show-empty"> annotate empty lanes <span class="new" title="New in this version">new</span></label>
+          <label title="The size scale beside the gel (MW in kDa, or DNA size in kb), from the ladder"><input type="checkbox" id="show-sizes" checked> ladder sizes <span class="new" title="New in this version">new</span></label>
           <label title="A red arrowhead and name (e.g. 4.A) at each band you've marked"><input type="checkbox" id="show-bands" checked> marked bands <span class="new" title="New in this version">new</span></label>
-          <label title="Beside the gel, each marked band's name with its annotation and estimated MW"><input type="checkbox" id="show-band-key" checked> band key <span class="new" title="New in this version">new</span></label></p>
+          <label title="Beside the gel, each marked band's name with its annotation and estimated size"><input type="checkbox" id="show-band-key" checked> band key <span class="new" title="New in this version">new</span></label></p>
         <p id="figure-note" class="hint"></p>
         <canvas id="figure-canvas" class="gel figure"></canvas>
         <label class="caption-label" for="caption">Figure caption</label>

@@ -275,3 +275,61 @@ table.eln th { font-weight: 600; background: var(--page); }
   background: #e8590c; color: #ffffff; font-size: 0.7rem; font-weight: 600; line-height: 1.4;
   letter-spacing: 0.03em; text-transform: uppercase; vertical-align: 0.1em;
 }
+
+/* protein or DNA: the switch in the header, and what each mode hides */
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+/* Protein / DNA switch: a flat pill whose thumb slides (with a little overshoot) and
+   carries the current mode's icon; the track turns from blue (protein) to green (DNA) */
+.mode-toggle {
+  --protein: #2a78d6; --protein-edge: #2369be; --dna: #05c46b; --dna-edge: #04b360;
+  display: inline-flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem;
+  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.mode-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.mode-name { font-weight: 600; font-size: 0.95rem; color: var(--text-muted); transition: color 0.25s, transform 0.25s; }
+.mode-toggle:has(input:not(:checked)) .mode-name-protein { color: var(--protein); transform: scale(1.06); }
+.mode-toggle:has(input:checked) .mode-name-dna { color: var(--dna); transform: scale(1.06); }
+.mode-track {
+  position: relative; width: 92px; height: 44px; border-radius: 22px; flex: none;
+  background: var(--protein);
+  box-shadow: inset 0 0 0 2px var(--protein-edge);
+  transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+.mode-toggle input:checked + .mode-track { background: var(--dna); box-shadow: inset 0 0 0 2px var(--dna-edge); }
+.mode-toggle input:focus-visible + .mode-track { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+/* faint icons on the track: the other mode, where the thumb would go */
+.mode-ghost { position: absolute; top: 9px; width: 26px; height: 26px; color: rgba(255, 255, 255, 0.75); transition: opacity 0.25s; }
+.mode-ghost svg { width: 100%; height: 100%; display: block; }
+.mode-ghost-protein { left: 9px; opacity: 0; }
+.mode-ghost-dna { right: 9px; }
+.mode-toggle input:checked + .mode-track .mode-ghost-protein { opacity: 1; }
+.mode-toggle input:checked + .mode-track .mode-ghost-dna { opacity: 0; }
+.mode-thumb {
+  position: absolute; top: 4px; left: 4px; width: 36px; height: 36px; border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  color: var(--protein);
+  transition: left 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.18s ease, color 0.35s ease;
+}
+.mode-toggle input:checked + .mode-track .mode-thumb { left: 52px; color: var(--dna); }
+/* pressed: the thumb squishes towards where it's going */
+.mode-toggle:active .mode-thumb { width: 44px; }
+.mode-toggle:active input:checked + .mode-track .mode-thumb { left: 44px; }
+.mode-thumb svg {
+  position: absolute; top: 4px; left: 4px; width: 28px; height: 28px;
+  transition: opacity 0.25s ease, transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.mode-toggle:active .mode-thumb svg { left: 8px; }
+.mode-thumb .icon-dna { opacity: 0; transform: rotate(-120deg) scale(0.4); }
+.mode-toggle input:checked + .mode-track .mode-thumb .icon-protein { opacity: 0; transform: rotate(120deg) scale(0.4); }
+.mode-toggle input:checked + .mode-track .mode-thumb .icon-dna { opacity: 1; transform: none; }
+/* no slide when the page opens in DNA mode: transitions only once it's ready */
+.mode-toggle:not(.ready) .mode-track, .mode-toggle:not(.ready) .mode-thumb, .mode-toggle:not(.ready) .mode-thumb svg,
+.mode-toggle:not(.ready) .mode-name, .mode-toggle:not(.ready) .mode-ghost { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mode-track, .mode-thumb, .mode-thumb svg, .mode-name, .mode-ghost { transition: none !important; }
+}
+body[data-mode="dna"] .protein-only { display: none !important; }
+body:not([data-mode="dna"]) .dna-only { display: none !important; }
+.hint-toggle { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
+.hint-toggle[hidden] { display: none; }

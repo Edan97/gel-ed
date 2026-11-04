@@ -2,17 +2,16 @@
 // Profiles are read from the original pixels through the edit's transform (or, to
 // compare, from the resampled edited image): see profilesFromOriginal in bands.js.
 
-import { readImage } from "./image.js?v=f78e7ddd";
-import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=f78e7ddd";
-import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, profilesFromOriginal, DEFAULTS } from "./bands.js?v=f78e7ddd";
-import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure, drawCalibration } from "./draw.js?v=f78e7ddd";
-import { median } from "./signal.js?v=f78e7ddd";
-import { bandSolidity, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=f78e7ddd";
-import { align, alignmentSigma, matchSignal, toRef } from "./running.js?v=f78e7ddd";
-import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=f78e7ddd";
-import { log, logOnChange, logText } from "./log.js?v=f78e7ddd";
-import { LADDERS } from "./ladders.js?v=f78e7ddd";
-import { drawIcons } from "./icons.js?v=f78e7ddd";
+import { readImage } from "./image.js?v=12a48e35";
+import { matrix, warp, frame, cropValid, clampCrop } from "./transform.js?v=12a48e35";
+import { bandCentre, bandsFromProfile, coreColumns, countLanes, findLanes, findWells, gelBox, gelSlab, profilesFromOriginal, DEFAULTS, EMPTY_FILL, USE_WELLS } from "./bands.js?v=12a48e35";
+import { greyToImageData, drawOverlay, drawDividers, drawDeadSpace, bandLetter, renderFigure, drawCalibration, view } from "./draw.js?v=12a48e35";
+import { median } from "./signal.js?v=12a48e35";
+import { bandSolidity, commonRows, ladderLoo, laneBackground, pchip, pickLadderBands } from "./calibrate.js?v=12a48e35";
+import { ANTIBODIES, antibodyCaption, antibodyLabel } from "./antibodies.js?v=12a48e35";
+import { log, logOnChange, logText } from "./log.js?v=12a48e35";
+import { LADDERS } from "./ladders.js?v=12a48e35";
+import { drawIcons } from "./icons.js?v=12a48e35";
 
 const $ = (id) => document.getElementById(id);
 const GEOMETRY = ["rotation", "perspective", "skew", "distort"];
@@ -33,6 +32,8 @@ const state = {
   flip: false,      // mirrored left-right (before the other geometry edits)
   bounds: null,     // dividers in crop columns; the spaces between them are lanes or dead space
   dead: new Set(),  // spaces between dividers (index into bounds) that aren't lanes: lanes are numbered over the rest
+  empty: new Set(), // spaces that are lanes with nothing loaded: numbered, but left off the figure unless asked
+  checkSecondLadder: false, // after lanes are counted: look for a second ladder of the same kind
   countLanes: true, // next analysis estimates the number of lanes (on load and "Find lanes")
   laneNote: "",
   ladders: [],      // one per ladder card: {type (key of LADDERS), lane (1-based), markers, manual, note}
@@ -59,6 +60,12 @@ const state = {
   // sample preparation: every tube made up to total µL with dye at dyeFold×, and the
   // reducing agent in the lanes ticked Reduced (laneRed)
   prep: { total: "20", dyeFold: "4", diluent: "PBS", reducer: "1 M DTT", reducerUl: "2" },
+  // protein (SDS-PAGE, western blot) or DNA (agarose gel); remembered between visits
+  mode: localStorage.getItem("gel-ed-mode") === "dna" ? "dna" : "protein",
+  // how a DNA gel was run: Nicole's notebooks (1% agarose in TAE with SYBR Safe 1× in the
+  // gel, NEB purple loading dye to 1×, 100 V 40 min, imaged on the ChemiDoc)
+  dnaRun: { agarose: "1", buffer: "TAE", stain: "SYBR Safe (1× in the gel)", dye: "Gel Loading Dye, Purple (6×) (NEB, B7024S), to 1×",
+            volts: "100", minutes: "40", imager: "ChemiDoc (Bio-Rad)" },
   panels: [],       // figures kept as panels: [{canvas, caption}], drawn left of this one
   groups: [],       // lane groups (one column each): [{name, from, to}] (lane numbers, inclusive; null = none)
   results: null,
@@ -84,16 +91,59 @@ async function load(file) {
     $("edit-stage").style.setProperty("--ar", `${w} / ${h}`); // display box keeps the original's shape
     $("edit-stage").style.maxWidth = `calc(80vh * ${(w / h).toFixed(4)})`; // and is no taller than most of the window
     $("drop").classList.add("compact");
-    const light = median(grey.filter((_, i) => i % 97 === 0)) >= 0.5;
-    log("load", { name: file.name, type: file.type, bytes: file.size, w, h, lightBackground: light });
-    setStatus(`${file.name}: ${w} × ${h} px.` +
-      (light ? "" : " This looks like light bands on a dark background: press Invert before reading bands."));
+    let light = median(grey.filter((_, i) => i % 97 === 0)) >= 0.5;
+    log("load", { name: file.name, type: file.type, bytes: file.size, w, h, lightBackground: light, mode: state.mode });
+    let note = "";
+    if (isDna() && !light) { note = " Light bands on black: read inverted (shown as photographed), cropped to the gel."; setupDnaImage(); }
+    else {
+      if (cropToGel()) { // light or dark: judged on the gel, not the background round it
+        const c = state.crop, v = [];
+        for (let y = c.y0; y <= c.y1; y += 7) for (let x = c.x0; x <= c.x1; x += 7) v.push(grey[y * w + x]);
+        light = median(v) >= 0.5;
+        note = " Cropped to the gel (drag the corners to change it).";
+      }
+      if (!light) note = " This looks like light bands on a dark background: press Invert before reading bands." + note;
+    }
+    setStatus(`${file.name}: ${w} × ${h} px.${note}`);
     applyGeometry();
   } catch (err) {
     console.error(err);
     log("load-failed", { name: file.name, type: file.type, bytes: file.size, message: err.message });
     setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
   }
+}
+
+// A DNA gel photo (light bands on black): bands are read from the inverted image (dark
+// bands on light, as everywhere else) but it's shown as photographed (view.flip), and
+// the analysed area starts as the gel slab (gelSlab), dropping the black surround that
+// misled the lane count. The crop can be changed as usual.
+function setupDnaImage() {
+  const { grey, w, h } = state.src;
+  state.invert = true;
+  $("invert").setAttribute("aria-pressed", "true");
+  const slab = gelSlab(grey, w, h);
+  if (slab.x0 > 0 || slab.y0 > 0 || slab.x1 < w - 1 || slab.y1 < h - 1) { // a slab on black (else the gel fills the photo)
+    state.crop = slab;
+    state.cropUser = true;
+    state.box = { x0: 0, y0: 0, W: w, H: h };
+  }
+  log("dna-setup", { slab, w, h });
+  syncView();
+}
+
+// Any other image: if there's plain background round the gel (a light box, scanner bed or
+// bench), the analysed area starts as the gel (gelBox), with a little margin. Returns
+// whether it cropped. Already trimmed scans are left whole.
+function cropToGel() {
+  const { grey, w, h } = state.src;
+  const box = gelBox(grey, w, h);
+  const cropped = box.x0 > 0 || box.y0 > 0 || box.x1 < w - 1 || box.y1 < h - 1;
+  log("gel-box", { box, w, h, cropped });
+  if (!cropped) return false;
+  state.crop = box;
+  state.cropUser = true;
+  state.box = { x0: 0, y0: 0, W: w, H: h };
+  return true;
 }
 
 // ---------- edits ----------
@@ -257,7 +307,7 @@ editCanvas.addEventListener("pointerup", () => {
 function carryLanes(old) {
   if (!state.bounds || !old) { state.bounds = null; return; }
   const dx = old.x0 - state.crop.x0, w = state.crop.x1 - state.crop.x0 + 1;
-  const sp = spaces().map(([a, b], i) => ({ a: Math.max(0, a + dx), b: Math.min(w, b + dx), dead: state.dead.has(i), was: a + dx }));
+  const sp = spaces().map(([a, b], i) => ({ a: Math.max(0, a + dx), b: Math.min(w, b + dx), dead: state.dead.has(i), empty: state.empty.has(i), was: a + dx }));
   const kept = sp.filter((s) => s.b - s.a >= 4);
   if (!kept.some((s) => !s.dead)) { state.bounds = null; return; }
   const lost = sp.filter((s) => !s.dead && s.b - s.a < 4 && s.was < 0).length; // lanes cut off on the left
@@ -265,6 +315,7 @@ function carryLanes(old) {
   if (kept[kept.length - 1].b < w) kept.push({ a: kept[kept.length - 1].b, b: w, dead: true });
   state.bounds = [kept[0].a, ...kept.map((s) => s.b)];
   state.dead = new Set(kept.map((s, i) => (s.dead ? i : -1)).filter((i) => i >= 0));
+  state.empty = new Set(kept.map((s, i) => (s.empty && !s.dead ? i : -1)).filter((i) => i >= 0));
   const n = kept.filter((s) => !s.dead).length;
   if (lost) {
     for (const key of LANE_ARRAYS) state[key] = state[key].map((_, k, arr) => arr[k + lost]);
@@ -328,7 +379,6 @@ function computeBands() {
   const opts = bandOptions();
   state.profiles = laneProfiles();
   state.results = state.profiles.map((p) => bandsFromProfile(p.mean, p.black, opts));
-  state.aligns = {};
   // each band's horizontal middle (where it's marked), measured on the edited image
   const { grey, w, h } = state.cropImg;
   lanePairs().forEach(([s, e], i) => state.results[i].bands.forEach((b) => { b.x = bandCentre(grey, w, h, s, e, b.y); }));
@@ -346,8 +396,31 @@ function resetLadders() {
   state.picks = [];
 }
 
-const fmtKda = (k) => (k >= 10 ? k.toFixed(0) : k.toFixed(1));
+// sizes: kDa (protein) or bp (DNA: to the nearest 10 bp from 1000 up)
+const isDna = () => state.mode === "dna";
+const unit = () => (isDna() ? "bp" : "kDa");
+const sizeWord = () => (isDna() ? "Size" : "MW");
+const fmtKda = (k) => (isDna() ? String(k >= 1000 ? Math.round(k / 10) * 10 : Math.round(k)) : k >= 10 ? k.toFixed(0) : k.toFixed(1));
 const medianOf = (v) => { if (!v.length) return 0; const t = [...v].sort((a, b) => a - b); return t[Math.floor(t.length / 2)]; };
+// A little past either end of a standard curve: a straight line in log size on with the
+// slope of the curve's last interval, out to 1.5x the end size (EXTRAPOLATE). How the
+// slope carries on past the ladder isn't known, so the extra uncertainty (log10) grows
+// with the distance past the end: rows past x the larger of the change in slope between
+// the last two intervals and a quarter of the slope. Null if further out than that.
+const EXTRAPOLATE = 1.5;
+function extrapolate(c, y) {
+  const ys = c.ys, n = ys.length;
+  if (n < 2) return null;
+  const top = y < ys[0];
+  const [a, b, d] = top ? [ys[0], ys[1], ys[2]] : [ys[n - 1], ys[n - 2], ys[n - 3]];
+  const s1 = (c.f(b) - c.f(a)) / (b - a);
+  const s2 = d === undefined ? s1 : (c.f(d) - c.f(b)) / (d - b);
+  const lk = c.f(a) + s1 * (y - a);
+  if (Math.abs(lk - c.f(a)) > Math.log10(EXTRAPOLATE)) return null;
+  const extra = Math.abs(y - a) * Math.max(Math.abs(s1 - s2), 0.25 * Math.abs(s1));
+  return { lk, slope: s1, extra, from: { y: a, lk: c.f(a) } };
+}
+
 // a ladder's band spread interpolated between its two nearest bands at reference row y
 function spreadAt(c, y) {
   const { ys, spread } = c;
@@ -376,25 +449,29 @@ function ladderCandidates(i, sizes) {
   return r;
 }
 
-// The ladder's bands in lane i as the ladder would pick them (pickLadderBands).
-function ladderPicks(i, sizes) {
+// The ladder's bands in lane i as the ladder would pick them (pickLadderBands): one
+// entry per size, a band or null. Rows where nearly every lane has a peak near the top
+// (wells, the stacking line) aren't candidates. mass: ng per band, if the ladder gives it.
+function ladderPicks(i, sizes, mass = null) {
   const { grey, w, h } = state.cropImg;
   const [s, e] = lanePairs()[i];
-  const bands = ladderCandidates(i, sizes).bands;
+  const common = commonRows(state.baseResults.map((r) => r.bands), h);
+  const bands = ladderCandidates(i, sizes).bands.filter((b) => !common.some((c) => Math.abs(b.y - c.y) <= c.tol));
   const bg = laneBackground(grey, w, h, s, e);
   const solidity = bands.map((b) => bandSolidity(grey, w, h, s, e, b.y, bg));
-  return { picks: pickLadderBands(bands, solidity, sizes),
+  return { picks: pickLadderBands(bands, solidity, sizes, mass),
            solid: bands.filter((b, k) => b.kind === "peak" && solidity[k] >= 0.85).length };
 }
 
 // Which lane is this ladder in? (until the user chooses one on its card) The lane whose
 // picked bands fit the ladder's sizes best: mean over consecutive picks of (ln of the
 // ratio of the two slopes of log10(kDa) against row)^2, as pickLadderBands, plus
-// 2 x the share of sizes with no solid band (a sample lane with a few evenly spaced
-// bands can fit well; a ladder has a band for most sizes). Lanes holding another ladder
-// are skipped. On every sample the ladder lane wins clearly (gel_04, ladder in lane 8
+// 2 x the share of sizes with no solid band and 2 x the share given no band (a sample
+// lane with a few evenly spaced bands can fit well; a ladder has a band for most sizes).
+// Lanes holding another ladder are skipped. On every sample the ladder lane wins clearly (gel_04, ladder in lane 8
 // of 15: 0.19 against 1.9 for the next best; gel_02: 0.53 against 1.39).
 // scoping/ladder_pick.py find_ladder_lane does the same.
+const SECOND_LADDER = 1.0;
 function autoLadderLane(lad) {
   const sizes = ladderSizes(lad);
   const taken = state.ladders.filter((l) => l !== lad && !l.auto).map((l) => l.lane)
@@ -405,19 +482,24 @@ function autoLadderLane(lad) {
   if (sizes.length < 3) return;
   const lk = sizes.map((k) => Math.log10(k));
   let best = Infinity, at = lad.lane;
+  const scores = [];
   lanePairs().forEach((_, i) => {
-    if (taken.includes(i + 1)) return;
-    const { picks, solid } = ladderPicks(i, sizes);
+    if (taken.includes(i + 1) || isEmptyLane(i + 1)) return;
+    const { picks: all, solid } = ladderPicks(i, sizes, ladderMass(lad));
+    const picks = all.map((b, k) => b && { y: b.y, lk: lk[k] }).filter(Boolean);
     if (picks.length < 3) return;
     let c = 0;
     for (let k = 2; k < picks.length; k++) {
-      const s1 = (lk[k - 1] - lk[k - 2]) / (picks[k - 1].y - picks[k - 2].y);
-      const s2 = (lk[k] - lk[k - 1]) / (picks[k].y - picks[k - 1].y);
+      const s1 = (picks[k - 1].lk - picks[k - 2].lk) / (picks[k - 1].y - picks[k - 2].y);
+      const s2 = (picks[k].lk - picks[k - 1].lk) / (picks[k].y - picks[k - 1].y);
       c += Math.log(s2 / s1) ** 2;
     }
-    const score = c / (picks.length - 2) + 2 * (1 - Math.min(solid, sizes.length) / sizes.length);
+    const score = c / (picks.length - 2) + 2 * (1 - Math.min(solid, sizes.length) / sizes.length)
+      + 2 * (1 - picks.length / sizes.length);
+    scores.push({ lane: i + 1, score });
     if (score < best) { best = score; at = i + 1; }
   });
+  lad.scores = scores;
   if (at !== lad.lane) { lad.lane = at; lad.markers = null; }
   log("ladder-lane-auto", { ladder: state.ladders.indexOf(lad) + 1, lane: at, score: +best.toFixed(2) });
 }
@@ -434,38 +516,90 @@ function assignLadders() {
     if (lad.auto && !lad.manual) autoLadderLane(lad);
     state.results[lad.lane - 1] = ladderCandidates(lad.lane - 1, ladderSizes(lad));
   }
+  // Freshly counted lanes and one ladder: is there a second of the same kind (often at the
+  // other end)? The best-scoring other lane (under SECOND_LADDER) whose bands line up
+  // with the first ladder's: a band for at least 60% of the sizes the first has, at rows
+  // a straight line (tilt, stretch) maps the first's onto within 1% of the gel's height
+  // (RMS). A sample lane full of bands can score like a ladder (23 of the lab's 39
+  // protein gels had one under 1.0) but its bands don't fall where the ladder's do.
+  // As scoping/ladder_pick.py second_ladder. Added once per count; remove its card if wrong.
+  if (state.checkSecondLadder) {
+    state.checkSecondLadder = false;
+    const [first] = state.ladders;
+    if (state.ladders.length === 1 && first.auto && !first.manual && first.scores) {
+      const sizes = ladderSizes(first), mass = ladderMass(first);
+      const rows = new Map();
+      ladderPicks(first.lane - 1, sizes, mass).picks.forEach((b, k) => { if (b) rows.set(sizes[k], b.y); });
+      const linesUp = (lane) => {
+        const pairs = [];
+        ladderPicks(lane - 1, sizes, mass).picks.forEach((b, k) => { if (b && rows.has(sizes[k])) pairs.push([rows.get(sizes[k]), b.y]); });
+        if (pairs.length < Math.max(3, 0.6 * rows.size)) return null;
+        const n = pairs.length, mx = pairs.reduce((t, p) => t + p[0], 0) / n, my = pairs.reduce((t, p) => t + p[1], 0) / n;
+        const slope = pairs.reduce((t, p) => t + (p[0] - mx) * (p[1] - my), 0) / pairs.reduce((t, p) => t + (p[0] - mx) ** 2, 0);
+        const rms = Math.sqrt(pairs.reduce((t, p) => t + (p[1] - (my + slope * (p[0] - mx))) ** 2, 0) / n);
+        return slope >= 0.85 && slope <= 1.15 && rms <= 0.01 * h ? rms : null;
+      };
+      let next = null;
+      for (const q of first.scores.filter((q) => q.lane !== first.lane && q.score < SECOND_LADDER).sort((a, b) => a.score - b.score)) {
+        const rms = linesUp(q.lane);
+        if (rms !== null) { next = { ...q, rms }; break; }
+      }
+      log("second-ladder", next ? { lane: next.lane, score: +next.score.toFixed(2), rms: +next.rms.toFixed(1) } : { none: true });
+      if (next) {
+        const lad = { ...newLadder(next.lane), type: first.type, sizes: [...first.sizes] };
+        state.ladders.push(lad);
+        autoLadderLane(lad);
+        state.results[lad.lane - 1] = ladderCandidates(lad.lane - 1, ladderSizes(lad));
+        drawLadderCards();
+      }
+    }
+  }
   for (const lad of state.ladders) {
     const sizes = ladderSizes(lad);
     const [s, e] = lanes[lad.lane - 1];
     if (!lad.manual || !lad.markers) {
       lad.offGel = [];
-      const chosen = ladderPicks(lad.lane - 1, sizes).picks;
-      lad.markers = chosen.map((b, i) => ({ y: b.y, kda: sizes[i] }));
+      lad.removed = [];
+      const chosen = ladderPicks(lad.lane - 1, sizes, ladderMass(lad)).picks;
+      const found = chosen.map((b, i) => b && { y: b.y, kda: sizes[i] }).filter(Boolean);
+      lad.markers = [...found];
       // sizes with no band found still get a marker, so they can be dragged into place:
-      // at the row a straight line through log10(kDa) against row of the placed ones gives
-      if (lad.markers.length >= 2 && lad.markers.length < sizes.length) {
-        const ys = lad.markers.map((q) => q.y), ks = lad.markers.map((q) => Math.log10(q.kda));
+      // between two placed neighbours, where log10(size) against row between them puts
+      // it; beyond them, on a straight line through all the placed ones
+      if (found.length >= 2 && found.length < sizes.length) {
+        const ys = found.map((q) => q.y), ks = found.map((q) => Math.log10(q.kda));
         const my = ys.reduce((a, v) => a + v, 0) / ys.length, mk = ks.reduce((a, v) => a + v, 0) / ks.length;
         const slope = ys.reduce((a, v, i) => a + (v - my) * (ks[i] - mk), 0) / ys.reduce((a, v) => a + (v - my) ** 2, 0);
-        let last = lad.markers[lad.markers.length - 1].y;
-        for (const kda of sizes.slice(lad.markers.length)) {
-          let y = Math.max(Math.round(my + (Math.log10(kda) - mk) / slope), last + 3); // below the last one
-          if (y > h - 1) { lad.offGel.push(kda); continue; } // would be below the image: not placed
+        sizes.forEach((kda, i) => {
+          if (chosen[i]) return;
+          const lkda = Math.log10(kda);
+          const above = found.filter((q) => q.kda > kda).pop(), below = found.find((q) => q.kda < kda);
+          let y;
+          if (above && below) {
+            const t = (Math.log10(above.kda) - lkda) / (Math.log10(above.kda) - Math.log10(below.kda));
+            y = Math.round(above.y + t * (below.y - above.y));
+          } else {
+            y = Math.round(my + (lkda - mk) / slope);
+            if (above) y = Math.max(y, above.y + 3); else y = Math.min(y, below.y - 3);
+          }
+          if (y > h - 1 || y < 0) { lad.offGel.push(kda); return; } // would be off the image: not placed
           lad.markers.push({ y, kda, estimated: true });
-          last = y;
-        }
+        });
+        lad.markers.sort((a, b) => b.kda - a.kda);
       }
     }
     const m = [...lad.markers].sort((a, b) => a.y - b.y);
     lad.note = "";
     lad.calib = null;
     const est = m.filter((q) => q.estimated).map((q) => q.kda);
-    if (est.length) lad.note = `No band found for ${est.join(", ")} kDa: placed by estimate (pale). Drag onto the right band.`;
-    if (m.length < sizes.length) lad.note = `Only ${m.length} of ${sizes.length} ladder bands placed.`;
+    if (est.length) lad.note = `No band found for ${est.join(", ")} ${unit()}: placed by estimate (pale). Drag onto the right band.`;
+    const gone = (lad.removed || []).filter((k) => !m.some((q) => q.kda === k));
+    if (gone.length) lad.note = `${gone.join(", ")} ${unit()} removed (right-click). Choose the ladder or its lane again to pick its bands afresh.`;
+    if (m.length + gone.length < sizes.length) lad.note = `Only ${m.length} of ${sizes.length} ladder bands placed.`;
     if (lad.offGel && lad.offGel.length) {
-      lad.note = `No band found for ${lad.offGel.join(", ")} kDa, and they would be below the image: delete them from Sizes if they ran off.`;
+      lad.note = `No band found for ${lad.offGel.join(", ")} ${unit()}, and they would be off the image: delete them from Sizes if they ran off.`;
     }
-    if (sizes.length < 2) lad.note = "Type at least two sizes (kDa) for this ladder.";
+    if (sizes.length < 2) lad.note = `Type at least two sizes (${unit()}) for this ladder.`;
     if (m.some((q, i) => i && (q.kda >= m[i - 1].kda || q.y <= m[i - 1].y))) {
       lad.note = "Ladder bands are out of order: drag them back so sizes fall from top to bottom.";
     } else if (m.length >= 2) {
@@ -486,53 +620,55 @@ function assignLadders() {
   state.marks = lanes.map(() => []);
   state.ladders.forEach((lad, li) => {
     const [s, e] = lanes[lad.lane - 1];
+    const keep = ladderKeep(lad);
     lad.markers.forEach((q, i) => state.marks[lad.lane - 1].push(
-      { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i, estimated: !!q.estimated }));
+      { y: q.y, x: bandCentre(grey, w, h, s, e, q.y), kda: q.kda, ladder: li, i, estimated: !!q.estimated, keep: keep.has(q.kda) }));
   });
-  // marked bands: named lane.letter top to bottom, mass from the nearest ladder with a
-  // calibration, read at the band's row corrected for its lane running differently from
-  // the lane next to that ladder (outside the ladder: ">top" / "<bottom")
+  // Marked bands: named lane.letter top to bottom, sized as in Bio-Rad's tech note 3133
+  // (log size against distance migrated). Each lane has its own standard curve: the
+  // ladder's band rows carried straight across to it, or with a ladder on each side, along
+  // the line joining each size in the two (a gel that ran a little faster on one side is
+  // followed); the band's size is read off that curve at the band's own row. No other
+  // correction. Outside the ladder: ">top" / "<bottom".
   const centre = ([s, e]) => (s + e) / 2;
-  const ladderLanes = new Set(state.ladders.map((l) => l.lane));
-  const nearest = (lane) => state.ladders.filter((l) => l.calib)
+  const calibrated = state.ladders.filter((l) => l.calib).sort((a, b) => a.lane - b.lane);
+  const nearest = (lane) => [...calibrated]
     .sort((a, b) => Math.abs(centre(lanes[a.lane - 1]) - centre(lane)) - Math.abs(centre(lanes[b.lane - 1]) - centre(lane)))[0];
-  const identity = { shift: 0, stretch: 1, corr: 1, centre: 0, sigma: 0, ok: true };
-  const alignFor = (j, near) => {
-    if (!near || ladderLanes.has(j + 1)) return identity;
-    const step = near.lane < lanes.length && !ladderLanes.has(near.lane + 1) ? 1 : -1;
-    const refLane = near.lane + step; // 1-based: the lane next to the ladder
-    if (refLane === j + 1 || refLane < 1 || refLane > lanes.length) return identity;
-    const key = `${j}:${refLane}`;
-    if (!state.aligns[key]) {
-      const me = state.results[j], ref = state.results[refLane - 1];
-      const a = align(matchSignal(me.profile, me.noise), matchSignal(ref.profile, ref.noise));
-      a.ok = a.corr >= 0.5;
-      a.sigma = alignmentSigma(me.bands, ref.bands, a);
-      a.refLane = refLane;
-      state.aligns[key] = a;
-      log("running-correction", { lane: j + 1, refLane, shift: a.shift, stretch: a.stretch, corr: +a.corr.toFixed(3),
-                                  leftoverRows: a.sigma === null ? null : +a.sigma.toFixed(2), ok: a.ok });
-    }
-    return state.aligns[key];
+  const calibFor = (lane) => {
+    if (calibrated.length < 2) return null;
+    const L = calibrated[0], R = calibrated[calibrated.length - 1];
+    const cL = centre(lanes[L.lane - 1]), cR = centre(lanes[R.lane - 1]), c = centre(lane);
+    if (cR <= cL || c <= cL || c >= cR) return null; // outside the pair: the nearer ladder's curve
+    const t = (c - cL) / (cR - cL);
+    const rowsOf = (lad) => new Map(lad.markers.map((q) => [q.kda, q.y]));
+    const spreadOf = (lad) => new Map(lad.calib.ys.map((y, i) => [lad.markers.find((q) => q.y === y)?.kda, lad.calib.spread[i]]));
+    const rl = rowsOf(L), rr = rowsOf(R), sl = spreadOf(L), sr = spreadOf(R);
+    const pts = [...rl.keys()].filter((k) => rr.has(k)).sort((a, b) => b - a)
+      .map((k) => ({ k, y: (1 - t) * rl.get(k) + t * rr.get(k), s: (1 - t) * (sl.get(k) ?? 3) + t * (sr.get(k) ?? 3) }));
+    const ok = pts.filter((p, i) => i === 0 || p.y > pts[i - 1].y); // rows must fall as sizes do
+    if (ok.length < 2) return null;
+    const ys = ok.map((p) => p.y), lk = ok.map((p) => Math.log10(p.k));
+    return { f: pchip(ys, lk), loo: ladderLoo(ys, lk), ys, spread: ok.map((p) => p.s),
+             y0: ys[0], y1: ys[ys.length - 1], kMax: ok[0].k, kMin: ok[ok.length - 1].k, blend: t };
   };
-  const laneAlign = lanes.map((lane, j) => alignFor(j, nearest(lane)));
-  // lanes whose leftover mismatch couldn't be measured (< 3 paired peaks) get the largest seen
-  const worst = Math.max(0, ...laneAlign.map((a) => a.sigma ?? 0));
   state.pickMarks = lanes.map((lane, j) => {
-    const near = nearest(lane), al = laneAlign[j];
+    const near = nearest(lane), laneCurve = calibFor(lane);
     return [...(state.picks[j] || [])].sort((a, b) => a.y - b.y).map((q, n) => {
       const out = { ref: q, y: q.y, x: bandCentre(grey, w, h, lane[0], lane[1], q.y), name: `${j + 1}.${bandLetter(n)}`,
-                    created: q.created, kda: null, label: "", alignOk: al.ok };
+                    created: q.created, kda: null, label: "" };
       if (near) {
-        const c = near.calib, yr = toRef(q.y, al);
-        out.ladder = state.ladders.indexOf(near); out.yr = yr;
-        if (yr < c.y0) out.label = `>${c.kMax}`;
-        else if (yr > c.y1) out.label = `<${c.kMin}`;
+        const c = laneCurve ?? near.calib, yr = q.y;
+        out.ladder = state.ladders.indexOf(near); out.curve = laneCurve;
+        const ex = yr < c.y0 || yr > c.y1 ? extrapolate(c, yr) : null;
+        if (yr < c.y0 && !ex) out.label = `>${c.kMax}`;
+        else if (yr > c.y1 && !ex) out.label = `<${c.kMin}`;
         else {
-          out.kda = 10 ** c.f(yr);
-          out.label = fmtKda(out.kda);
-          // uncertainty (log10): band position and leftover running mismatch (rows), through
-          // the curve's local slope, plus calibration (ladder leave-one-out)
+          out.kda = 10 ** (ex ? ex.lk : c.f(yr));
+          out.extrapolated = !!ex;
+          out.extFrom = ex ? ex.from : null;
+          out.label = (ex ? "~" : "") + fmtKda(out.kda);
+          // uncertainty (log10): the band's position (rows) through the curve's local slope,
+          // plus the curve's own (ladder leave-one-out)
           const laneBands = state.results[j].bands;
           const found = laneBands.find((b) => Math.abs(b.y - q.y) <= 1);
           const sy = found && !q.created ? found.sigmaY : 3; // 3 rows for a band placed by hand
@@ -541,14 +677,9 @@ function assignLadders() {
           const typical = medianOf(laneBands.filter((b) => b.fwhm).map((b) => b.fwhm)) / 2.355 || 3;
           const sw = found && found.fwhm && !q.created ? found.fwhm / 2.355 : typical;
           const sl = spreadAt(c, yr); // the ladder bands' spread at this row (their positions are as uncertain)
-          // running: the leftover mismatch after the correction; where the lane matches the
-          // one next to the ladder poorly, the correction itself is in doubt, so the band
-          // could be anywhere from its corrected row to where it sits (and at least the worst
-          // mismatch seen)
-          const run = al.ok ? al.sigma ?? worst : Math.max(al.sigma ?? 0, worst, Math.abs(yr - q.y));
-          const rows = Math.hypot(Math.hypot(sy, sw) * al.stretch, run, sl);
-          const slope = Math.abs(c.f(Math.min(yr + 0.5, c.y1)) - c.f(Math.max(yr - 0.5, c.y0)));
-          const sd = Math.hypot(slope * rows, c.loo ? c.loo(yr) : 0);
+          const rows = Math.hypot(sy, sw, sl);
+          const slope = ex ? Math.abs(ex.slope) : Math.abs(c.f(Math.min(yr + 0.5, c.y1)) - c.f(Math.max(yr - 0.5, c.y0)));
+          const sd = Math.hypot(slope * rows, c.loo ? c.loo(Math.min(Math.max(yr, c.y0), c.y1)) : 0, ex ? ex.extra : 0);
           out.pm = out.kda * (10 ** sd - 1);
         }
       }
@@ -574,13 +705,14 @@ function drawCalibrationPlot() {
     return { name: `Ladder ${state.ladders.indexOf(l) + 1}: ${ladderName(l)}, lane ${l.lane}`, kda: m.map((q) => q.kda),
              ys: m.map((q) => q.y), est: m.map((q) => !!q.estimated), f: l.calib.f, y0: l.calib.y0, y1: l.calib.y1 };
   }), ladders.map((l) => marks.filter((q) => q.kda !== null && state.ladders[q.ladder] === l)
-    .map((q) => ({ name: q.name, y: q.yr, kda: q.kda, pm: q.pm || 0 }))),
+    .map((q) => ({ name: q.name, y: q.y, kda: q.kda, pm: q.pm || 0, curve: q.curve, from: q.extFrom }))),
   getComputedStyle(document.body).getPropertyValue("--text-primary").trim() || "#222222");
   $("calibration-note").textContent = "Dots: ladder bands (pale: placed by estimate). Blue: the curve masses are read from, " +
     "passing through every ladder band (log MW, smooth between neighbouring bands). Dashed: a straight line of best fit " +
     "through all the ladder bands, as a check on the gel (r² near 1: it ran evenly; bands far off it: the gel bent there " +
-    "or a ladder band is on the wrong size); masses aren't read from it. Red: bands you've marked, at their row corrected for their lane running " +
-    "differently, with their ± as a bar." + (outside.length ? ` Outside the ladder (not plotted): ${outside.join(", ")}.` : "");
+    "or a ladder band is on the wrong size); masses aren't read from it. Red: bands you've marked, at their own row, with their ± " +
+    "as a bar; between two ladders, on their lane's curve (thin red: the two ladders blended by where the lane sits), shown " +
+    "with the nearer ladder; past the end of the ladder, extrapolated in a straight line (dotted) with a larger ±." + (outside.length ? ` Outside the ladder (not plotted): ${outside.join(", ")}.` : "");
 }
 
 // Clicking on a band marks it: the nearest band found in that lane that isn't marked
@@ -591,6 +723,7 @@ function clickBand(p) {
   if (y < 0 || y >= state.cropImg.h) return;
   const space = spaceAt(p.x);
   if (space < 0 || state.dead.has(space)) return; // dead space: not a lane
+  if (state.empty.has(space)) { log("click-ignored", { reason: "empty lane", lane: laneSpaces().indexOf(space) + 1 }); return; }
   const lane = laneSpaces().indexOf(space);
   const picks = (state.picks[lane] = state.picks[lane] || []);
   // snap to the nearest band found that isn't marked yet (within 8 screen px); otherwise
@@ -621,13 +754,22 @@ function analyse() {
     state.cropImg = cropImage();
     const { grey, w, h } = state.cropImg;
     if (state.countLanes) {
-      const est = countLanes(grey, w, h);
+      // DNA gels: the wells' spacing, if a row of them shows, sets the lane width (a gel
+      // with a few wells loaded otherwise gets lanes two or three times too wide)
+      const wells = isDna() ? findWells(grey, w, h) : null;
+      const hint = wells && wells.n >= USE_WELLS ? wells.pitch : null;
+      if (isDna()) log("wells", wells ? { pitch: +wells.pitch.toFixed(1), row: wells.row, n: wells.n, used: !!hint } : { none: true });
+      const est = countLanes(grey, w, h, hint);
       log("lane-count", { n: est.n, pitch: Math.round(est.pitch), gaps: est.gaps });
       $("lanes").value = Math.max(1, Math.min(60, est.n));
       state.laneNote = `Found ${est.n} lanes (typical lane ${Math.round(est.pitch)} px wide). `;
       state.countLanes = false;
       state.bounds = est.n <= 60 ? est.bounds : null;
       state.dead = new Set(est.dead);
+      // DNA gels often leave wells empty: those lanes keep their numbers but are marked empty
+      state.empty = new Set(isDna() ? est.fill.map((f, i) => (!state.dead.has(i) && f < EMPTY_FILL ? i : -1)).filter((i) => i >= 0) : []);
+      if (state.empty.size) log("empty-lanes", { lanes: [...state.empty].map((i) => laneSpaces().indexOf(i) + 1) });
+      state.checkSecondLadder = true;
       if (state.flipLanes) mirrorLanes(state.flipLanes, est.n);
       state.flipLanes = 0;
     }
@@ -635,6 +777,7 @@ function analyse() {
     if (!state.bounds || lanePairs().length !== n || state.bounds[state.bounds.length - 1] > w) {
       state.bounds = findLanes(grey, w, h, n);
       state.dead = new Set();
+      state.empty = new Set();
     }
     computeBands();
     logOnChange("analysis", {
@@ -651,6 +794,7 @@ function analyse() {
 const spaces = () => state.bounds.slice(0, -1).map((b, i) => [Math.round(b), Math.round(state.bounds[i + 1])]);
 const laneSpaces = () => spaces().map((_, i) => i).filter((i) => !state.dead.has(i));
 const lanePairs = () => spaces().filter((_, i) => !state.dead.has(i));
+const isEmptyLane = (k) => state.empty.has(laneSpaces()[k - 1]); // lane number k (1-based)
 const spaceAt = (x) => state.bounds.findIndex((b, i) => i < state.bounds.length - 1 && x >= b && x < state.bounds[i + 1]);
 
 // Turn the space between two dividers into dead space (on) or back into a lane. Lanes
@@ -658,10 +802,24 @@ const spaceAt = (x) => state.bounds.findIndex((b, i) => i < state.bounds.length 
 // annotations, volumes, marked bands, ladders (a ladder whose lane goes moves to the
 // nearest lane and is picked again, and returns if that lane comes back) and groups
 // (trimmed to the lanes left).
+// Clicking above a lane cycles it: a lane -> empty (nothing loaded: numbered, but left
+// off the figure unless "annotate empty lanes" is ticked) -> removed (empty space, not a
+// lane) -> a lane again.
+function cycleSpace(space) {
+  if (state.dead.has(space)) { setDead(space, false); return; }
+  if (state.empty.has(space)) { setDead(space, true); return; }
+  state.empty.add(space);
+  log("lane-empty", { lane: laneSpaces().indexOf(space) + 1 });
+  stripHover = null;
+  computeBands();
+  drawResults();
+  drawAnnotations(true);
+}
+
 function setDead(space, on) {
   const before = laneSpaces();
   if (on && before.length <= 1) return; // keep at least one lane
-  if (on) state.dead.add(space); else state.dead.delete(space);
+  if (on) { state.dead.add(space); state.empty.delete(space); } else state.dead.delete(space);
   const after = laneSpaces();
   const renumber = (k) => { const i = after.indexOf(before[k - 1]); return i < 0 ? null : i + 1; }; // old lane -> new
   const remap = (arr, offset) => { // arrays indexed by lane number - offset
@@ -707,18 +865,21 @@ function drawResults(active = -1) {
   ctx.fillRect(0, 0, w, top);
   ctx.putImageData(greyToImageData(ctx, grey, w, h), 0, top);
   drawDividers(ctx, state.bounds, top, h, px, active);
-  drawOverlay(ctx, lanePairs(), state.results, top, px, $("show-profiles").getAttribute("aria-pressed") === "true",
+  const shown = state.results.map((r, i) => (isEmptyLane(i + 1) ? { ...r, bands: [] } : r)); // empty lanes: no bands drawn
+  drawOverlay(ctx, lanePairs(), shown, top, px, $("show-profiles").getAttribute("aria-pressed") === "true",
               state.marks, markDrag, state.pickMarks, lanePairs().map(([s, e]) => coreColumns(s, e, value("core"))));
   const sp = spaces();
   drawDeadSpace(ctx, [...state.dead].map((i) => sp[i]).filter(Boolean), top, h, px,
                 stripHover === null || !sp[stripHover] ? null
-                  : { start: sp[stripHover][0], end: sp[stripHover][1], dead: state.dead.has(stripHover) },
-                getComputedStyle(document.body).getPropertyValue("--surface").trim() || "#fff");
-  const found = state.results.reduce((a, r) => a + r.bands.length, 0);
+                  : { start: sp[stripHover][0], end: sp[stripHover][1], dead: state.dead.has(stripHover), empty: state.empty.has(stripHover) },
+                getComputedStyle(document.body).getPropertyValue("--surface").trim() || "#fff",
+                [...state.empty].map((i) => sp[i]).filter(Boolean));
+  const found = shown.reduce((a, r) => a + r.bands.length, 0);
+  const nEmpty = lanePairs().filter((_, i) => isEmptyLane(i + 1)).length;
   const marked = state.pickMarks.reduce((a, m) => a + m.length, 0);
   const from = $("source").value === "original" ? "original pixels" : "edited image";
-  $("summary").textContent = state.laneNote + `${state.results.length} lanes, ${found} bands found, ${marked} marked. ` +
-    `Click a band to mark it, drag to move it, right-click to delete it. Profiles read from the ${from}.`;
+  $("summary").textContent = state.laneNote + `${state.results.length} lanes${nEmpty ? ` (${nEmpty} empty)` : ""}, ${found} bands found, ${marked} marked. ` +
+    `Click a band to mark it, drag to move it, right-click to delete it (a ladder point: takes that size out). Profiles read from the ${from}.`;
   drawFigure();
   drawCalibrationPlot();
   drawLadderNotes();
@@ -746,12 +907,26 @@ function markerAt(p) {
   return best;
 }
 
-// Right-click on a marked band deletes it.
+// Right-click on a marked band deletes it; on a ladder point, takes that size out of the
+// ladder's calibration (the point stays out while the ladder's bands are kept as moved:
+// choosing the ladder or its lane again picks them afresh).
 overlayCanvas.addEventListener("contextmenu", (e) => {
   if (!state.bounds) return;
   const hit = markerAt(canvasPoint(overlayCanvas, e));
-  if (!hit || hit.kind !== "pick") return;
+  if (!hit) return;
   e.preventDefault();
+  if (hit.kind === "ladder") {
+    const lad = state.ladders[hit.mark.ladder];
+    const k = lad.markers.findIndex((q) => q.kda === hit.mark.kda);
+    if (k < 0) return;
+    lad.markers.splice(k, 1);
+    lad.manual = true;
+    (lad.removed ??= []).push(hit.mark.kda);
+    log("ladder-point-removed", { ladder: hit.mark.ladder + 1, size: hit.mark.kda, row: hit.mark.y });
+    assignLadders();
+    drawResults();
+    return;
+  }
   const picks = state.picks[hit.lane];
   picks.splice(picks.indexOf(hit.mark.ref), 1);
   log("delete", { lane: hit.lane + 1, row: hit.mark.y, name: hit.mark.name });
@@ -765,7 +940,7 @@ overlayCanvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // right-click is handled by "contextmenu"
   if (p.y < overlayCanvas.height - state.cropImg.h) { // the strip above the gel: remove or add a lane
     const space = spaceAt(p.x);
-    if (space >= 0) setDead(space, !state.dead.has(space));
+    if (space >= 0) cycleSpace(space);
     return;
   }
   const hit = markerAt(p);
@@ -799,7 +974,9 @@ overlayCanvas.addEventListener("pointermove", (e) => {
     const inStrip = p.y < overlayCanvas.height - state.cropImg.h;
     const space = inStrip ? spaceAt(p.x) : -1;
     if ((space < 0 ? null : space) !== stripHover) { stripHover = space < 0 ? null : space; drawResults(); }
-    overlayCanvas.title = space < 0 ? "" : state.dead.has(space) ? "Make this a lane" : `Remove lane ${laneSpaces().indexOf(space) + 1} (make it empty space)`;
+    overlayCanvas.title = space < 0 ? "" : state.dead.has(space) ? "Make this a lane"
+      : state.empty.has(space) ? `Remove lane ${laneSpaces().indexOf(space) + 1} (make it space between lanes)`
+      : `Mark lane ${laneSpaces().indexOf(space) + 1} empty (nothing loaded; it keeps its number)`;
     const near = !inStrip && state.bounds.some((b) => Math.abs(b - p.x) <= 8 * p.px);
     overlayCanvas.style.cursor = inStrip ? (space < 0 ? "default" : "pointer") : markerAt(p) ? "grab" : near ? "ew-resize" : "default";
     return;
@@ -868,8 +1045,23 @@ overlayCanvas.addEventListener("pointerup", (e) => {
 // A ladder's sizes (kDa, largest first): pre-filled from LADDERS when its type is chosen
 // (empty for "custom"), then as edited on its card (e.g. sizes that ran off the gel deleted).
 const ladderSizes = (lad) => lad.sizes;
+// the current mode's ladders (protein: kDa, DNA: bp), in LADDERS order
+const ladderKeys = () => Object.keys(LADDERS).filter((k) => !!LADDERS[k].dna === isDna());
+// The ladder's brighter reference bands (at least twice the median ng per band: the 1 kb
+// Plus's 3.0, 1.0 and 0.5 kb): their size labels are always shown, others give way to them
+const ladderKeep = (lad) => {
+  const L = LADDERS[lad.type];
+  if (!L || !L.ng) return new Set();
+  const med = median(L.ng);
+  return new Set(L.kda.filter((_, i) => L.ng[i] >= 2 * med));
+};
+// ng per band, if the ladder gives it and its sizes are as listed
+const ladderMass = (lad) => {
+  const L = LADDERS[lad.type];
+  return L && L.ng && L.kda.length === lad.sizes.length && L.kda.every((k, i) => k === lad.sizes[i]) ? L.ng : null;
+};
 const presetSizes = (type) => (type === "custom" ? [] : [...LADDERS[type].kda]);
-const ladderName = (lad) => (lad.type === "custom" ? (lad.sizes.length ? `Custom ladder (${lad.sizes.join(", ")} kDa)` : "Custom ladder") : LADDERS[lad.type].name);
+const ladderName = (lad) => (lad.type === "custom" ? (lad.sizes.length ? `Custom ladder (${lad.sizes.join(", ")} ${unit()})` : "Custom ladder") : LADDERS[lad.type].name);
 // as in the caption: with supplier and catalogue number, e.g. "BenchMark™ Protein Ladder (Thermo Fisher Scientific, cat. # 10747012)"
 const ladderCaption = (lad) => {
   const L = LADDERS[lad.type];
@@ -888,8 +1080,9 @@ function drawLadderCards() {
     const card = $("ladder-card").content.firstElementChild.cloneNode(true);
     card.querySelector(".ladder-title").textContent = `Ladder ${i + 1}`;
     const select = card.querySelector(".ladder-type");
-    for (const [key, { name }] of Object.entries(LADDERS)) select.add(new Option(name, key));
+    for (const key of ladderKeys()) select.add(new Option(LADDERS[key].name, key));
     select.add(new Option("Custom (type the sizes)", "custom"));
+    card.querySelector(".ladder-sizes-label").firstChild.textContent = `Sizes (${unit()})`;
     select.value = ladder.type;
     const sizesBox = card.querySelector(".ladder-sizes");
     sizesBox.value = ladder.sizes.join(", ");
@@ -923,7 +1116,7 @@ function drawLadderCards() {
 }
 
 // lane: where it starts; auto: the page finds its lane (autoLadderLane) until the user chooses one
-const newLadder = (lane) => ({ type: Object.keys(LADDERS)[0], sizes: presetSizes(Object.keys(LADDERS)[0]), lane, auto: true, markers: null, manual: false, note: "" });
+const newLadder = (lane) => ({ type: ladderKeys()[0], sizes: presetSizes(ladderKeys()[0]), lane, auto: true, markers: null, manual: false, note: "" });
 $("add-ladder").addEventListener("click", () => {
   state.ladders.push(newLadder(state.bounds ? lanePairs().length : 1)); // a second ladder: often the last lane
   if (state.results) { assignLadders(); drawResults(); } else drawLadderCards();
@@ -964,12 +1157,18 @@ function drawLadderNotes() {
 // column per group. A group's lanes are set by clicking a cell and dragging down its
 // column, so a group is always a continuous run of lanes (from..to, lane numbers).
 let groupDrag = null; // {g, start}
+const showEmptyRows = () => $("show-empty-rows").checked;
+$("show-empty-rows").addEventListener("change", () => { drawAnnotations(true); drawPrep(true); });
 function drawAnnotations(force = false) {
   const table = $("annot");
   if (!force && (typingIn(table) || groupDrag)) return; // don't rebuild under the user
   const n = state.bounds ? lanePairs().length : 0;
   const ladderLanes = new Set(state.ladders.map((l) => l.lane));
-  const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k));
+  // empty lanes (nothing loaded) are left out unless "show empty lanes" is ticked
+  const lanes = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k) && (showEmptyRows() || !isEmptyLane(k)));
+  const nEmpty = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k) && isEmptyLane(k)).length;
+  $("annot-empty").hidden = !nEmpty;
+  $("annot-empty-count").textContent = nEmpty ? ` (${nEmpty})` : "";
   for (const g of state.groups) if (g.from && (g.from > n || g.to > n)) { g.from = g.to = null; }
   const head = document.createElement("tr");
   head.innerHTML = "<th>Lane</th><th>Annotation</th><th>Volume</th>";
@@ -1094,18 +1293,19 @@ function drawBandNotes() {
   const marked = (state.pickMarks || []).flat();
   logOnChange("marked-bands", marked.map((q) => ({ name: q.name, row: q.y, kDa: q.kda === null ? q.label : +q.kda.toFixed(1),
                                                    pm: q.pm === undefined ? null : +q.pm.toFixed(2), created: q.created,
-                                                   runningOk: q.alignOk })));
+                                                   blend: q.curve ? +q.curve.blend.toFixed(2) : null })));
   $("band-annot").hidden = marked.length === 0;
   const table = $("band-table");
   if (typingIn(table)) return;
   const head = document.createElement("tr");
-  head.innerHTML = "<th>Band</th><th>MW (kDa)</th><th>Annotation</th>";
+  head.innerHTML = `<th>Band</th><th>${sizeWord()} (${unit()})</th><th>Annotation</th>`;
   const rows = marked.map((q) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td class="band-name"></td><td class="band-mw"></td><td><input type="text" class="band-text" placeholder="e.g. full-length, cleaved, …"></td>`;
     tr.querySelector(".band-name").textContent = q.name;
+    if (q.extrapolated) tr.querySelector(".band-mw").title = "Past the end of the ladder: extrapolated, with a larger ±";
     tr.querySelector(".band-mw").textContent = q.kda === null ? (q.label || "—")
-      : `${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}`;
+      : `${q.extrapolated ? "~" : ""}${fmtKda(q.kda)} ± ${q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1)}`;
     const input = tr.querySelector(".band-text");
     input.value = q.ref.note ?? "";
     input.addEventListener("input", () => { q.ref.note = input.value; drawTables(); drawFigure(); });
@@ -1162,7 +1362,7 @@ function drawPrep(force = false) {
   head.innerHTML = `<th>Lane</th><th>Conc.</th><th>Amount</th><th>Reduced</th><th>Sample</th><th></th><th></th><th>Dye</th><th>Total</th>`;
   head.children[5].textContent = p.diluent.trim() || "Diluent";
   head.children[6].textContent = p.reducer.trim() || "Reducing agent";
-  const rows = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k)).map((k) => {
+  const rows = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !ladderLanes.has(k) && (showEmptyRows() || !isEmptyLane(k))).map((k) => {
     const tr = document.createElement("tr");
     tr.dataset.lane = String(k);
     tr.innerHTML = `<td class="prep-lane"></td>
@@ -1238,7 +1438,7 @@ function laneTable() {
     const inGroups = state.groups.filter((g) => g.from !== null && k >= g.from && k <= g.to && g.name.trim()).map((g) => g.name.trim()).join(", ");
     if (lad) { rows.push([String(k), (lad.noteText ?? ladderCaption(lad)).trim(), inGroups, "", (lad.volume ?? "").trim()]); continue; }
     const r = prepRow(k), vol = (state.laneVols[k] ?? "").trim().replace(/\s*(µ|u)l$/i, "") || (r.given && r.total !== null ? fmt(r.total) : "");
-    rows.push([String(k), laneDesc(k), inGroups, r.ug !== null ? fmt(r.ug) : "", vol]);
+    rows.push([String(k), laneDesc(k) || (isEmptyLane(k) ? "Empty" : ""), inGroups, r.ug !== null ? fmt(r.ug) : "", vol]);
   }
   const head = ["Lane", "Sample", "Group", "Amount (µg)", "Volume (µL)"];
   const keep = head.map((_, c) => c < 2 || rows.some((r) => r[c]));
@@ -1248,9 +1448,9 @@ function laneTable() {
 // Marked bands: name, lane, estimated MW ± uncertainty (? = running correction uncertain)
 // and annotation
 function bandTable() {
-  const rows = [["Band", "Lane", "MW (kDa)", "± (kDa)", "Annotation"]];
+  const rows = [["Band", "Lane", `${sizeWord()} (${unit()})`, `± (${unit()})`, "Annotation"]];
   (state.pickMarks || []).forEach((m, i) => m.forEach((q) => rows.push([q.name, String(i + 1),
-    q.kda === null ? q.label || "" : fmtKda(q.kda),
+    q.kda === null ? q.label || "" : (q.extrapolated ? "~" : "") + fmtKda(q.kda),
     q.kda === null || q.pm === undefined ? "" : q.pm >= 10 ? q.pm.toFixed(0) : q.pm.toFixed(1), (q.ref.note ?? "").trim()])));
   return rows;
 }
@@ -1262,9 +1462,10 @@ const TABLES = [
   { title: "Sample preparation", rows: () => prepTable(), empty: "Type a concentration or amount for a lane under Sample preparation." },
   { title: "Band annotations", rows: () => bandTable(), empty: "Click a band on the gel to mark it." },
 ];
+const tableShown = (t) => !(isDna() && t.title === "Sample preparation"); // no protein sample prep for DNA gels
 function drawTables() {
   const box = $("tables");
-  box.replaceChildren(...TABLES.map((t) => {
+  box.replaceChildren(...TABLES.filter(tableShown).map((t) => {
     const rows = t.rows(), sec = document.createElement("div");
     sec.className = "eln-section";
     sec.innerHTML = `<div class="eln-head"><h3 class="sub"></h3><button type="button" class="btn">Copy</button></div>`;
@@ -1284,7 +1485,7 @@ function drawTables() {
   }));
 }
 $("copy-all").addEventListener("click", () => {
-  const all = TABLES.map((t) => ({ title: t.title, rows: t.rows() })).filter((t) => t.rows.length > 1);
+  const all = TABLES.filter(tableShown).map((t) => ({ title: t.title, rows: t.rows() })).filter((t) => t.rows.length > 1);
   if (all.length) copyTables(all, $("tables-note"));
 });
 
@@ -1371,6 +1572,7 @@ drawMethod();
 
 // "Western blot probed with A and B." / "SDS-PAGE stained with Coomassie."
 function methodSentence() {
+  if (isDna()) return dnaSentences().join(" ");
   const m = state.method;
   if (m.type === "sds") return m.stain.trim() ? `SDS-PAGE stained with ${m.stain.trim()}.` : "SDS-PAGE.";
   const abs = m.antibodies.map((ab) => (ab.key === "custom" ? ab.text.trim() : antibodyCaption(ANTIBODIES[ab.key]))).filter(Boolean);
@@ -1386,12 +1588,31 @@ for (const el of document.querySelectorAll("[data-run]")) {
   });
 }
 
+// A DNA gel's method, e.g. "Samples were mixed with Gel Loading Dye, Purple (6×) (NEB,
+// B7024S), to 1× and run on a 1% agarose gel in TAE with SYBR Safe (1× in the gel) at
+// 100 V for 40 min. The gel was imaged on a ChemiDoc (Bio-Rad)."
+function dnaSentences() {
+  const d = Object.fromEntries(Object.entries(state.dnaRun).map(([k, v]) => [k, v.trim()]));
+  const gel = `${d.agarose ? `${d.agarose.replace(/%$/, "")}% ` : ""}agarose gel`;
+  const run = `run on ${/^(8|11|18)/.test(gel) ? "an" : "a"} ${gel}${d.buffer ? ` in ${d.buffer}` : ""}`
+    + (d.stain ? ` with ${d.stain}` : "") + (d.volts ? ` at ${d.volts} V` : "") + (d.minutes ? ` for ${d.minutes} min` : "");
+  const out = [`Samples were ${d.dye ? `mixed with ${d.dye} and ` : ""}${run}.`];
+  if (d.imager) out.push(`The gel was imaged on ${/^(a|an|the) /i.test(d.imager) ? "" : "a "}${d.imager}.`);
+  return out;
+}
+
+for (const el of document.querySelectorAll("[data-dna]")) {
+  el.value = state.dnaRun[el.dataset.dna];
+  el.addEventListener("input", () => { state.dnaRun[el.dataset.dna] = el.value; updateCaption(); });
+}
+
 // How the gel was run (and transferred), from the fields filled in, e.g.
 //   "Samples were heated at 95 °C for 5 min and run on a NuPAGE 4–12% Bis-Tris gel (12
 //    wells) in MES running buffer at 165 V for 35 min."
 //   "Proteins were transferred to nitrocellulose (100 V, 1 h, cold room), checked with
 //    Ponceau S staining and blocked with 5% BSA in TBS."
 function runSentences() {
+  if (isDna()) return []; // all in methodSentence
   const r = Object.fromEntries(Object.entries(state.run).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
   const out = [];
   const heat = r.heatC || r.heatMin ? `heated${r.heatC ? ` at ${r.heatC} °C` : ""}${r.heatMin ? ` for ${r.heatMin} min` : ""}` : "";
@@ -1417,6 +1638,18 @@ function runSentences() {
 function runRecord() {
   const r = state.run, m = state.method, rows = [["Parameter", "Details"]];
   const add = (name, v) => { if (v !== "" && v !== false && v != null) rows.push([name, String(v)]); };
+  if (isDna()) {
+    const d = Object.fromEntries(Object.entries(state.dnaRun).map(([k, v]) => [k, v.trim()]));
+    add("Method", "Agarose gel electrophoresis");
+    add("Gel", [d.agarose && `${d.agarose.replace(/%$/, "")}% agarose`, d.buffer && `in ${d.buffer}`].filter(Boolean).join(" "));
+    add("Stain", d.stain);
+    add("Loading dye", d.dye);
+    add("Voltage", d.volts && `${d.volts} V`);
+    add("Running time", d.minutes && `${d.minutes} min`);
+    add("Imaged on", d.imager);
+    state.ladders.forEach((lad, i) => add(state.ladders.length > 1 ? `Ladder ${i + 1}` : "Ladder", (lad.noteText ?? ladderCaption(lad)).trim()));
+    return rows;
+  }
   add("Method", m.type === "sds" ? `SDS-PAGE${m.stain.trim() ? `, ${m.stain.trim()} stain` : ""}` : "Western blot");
   add("Gel", r.gel.trim());
   add("Number of wells", r.wells.trim());
@@ -1500,24 +1733,27 @@ $("caption-regenerate").addEventListener("click", () => { state.captionAuto = tr
 
 // ---------- figure ----------
 
-// The analysed gel with ladder sizes down the side: the leftmost ladder on the left, a
+// The analysed gel with ladder sizes down the side: the leftmost ladder on the left (a lone ladder in the right half: on the right), a
 // second ladder on the right. (More than two ladders: only those two are shown, for now.)
 function drawFigure() {
   const { grey, w, h } = state.cropImg;
   const placed = state.ladders.filter((l) => l.markers && l.markers.length).sort((a, b) => a.lane - b.lane);
-  const side = (l) => (l ? [...l.markers].sort((a, b) => a.y - b.y).map((q) => ({ y: q.y, kda: q.kda })) : null);
+  const side = (l) => (l ? [...l.markers].sort((a, b) => a.y - b.y).map((q) => ({ y: q.y, kda: q.kda, keep: ladderKeep(l).has(q.kda) })) : null);
   // above the gel: lane labels and annotations (sample lanes; ladders are on the MW scale)
   // and group bars, one row per group column that has lanes
   // with the lane list, lanes are numbered above the gel and described beside it
   const pairs = lanePairs(), listed = $("show-list").checked, named = $("show-ladder-names").checked;
+  const hideEmpty = !$("show-empty").checked; // empty lanes: no label or list entry unless asked
   const ladderAt = (k) => state.ladders.find((l) => l.lane === k);
   const lanes = pairs.map(([x0, x1], i) => {
     const lad = ladderAt(i + 1);
     if (lad) return { x0, x1, id: listed && !named ? String(i + 1) : "", text: "", ladder: named ? ladderShort(lad) : "" };
+    if (hideEmpty && isEmptyLane(i + 1)) return { x0, x1, id: "", text: "" };
     return { x0, x1, id: listed ? String(i + 1) : state.laneIds[i + 1] ?? String(i + 1), text: "" };
   });
   const list = !listed ? [] : pairs.map((_, i) => {
-    const lad = ladderAt(i + 1), text = lad ? `Ladder: ${(lad.noteText ?? ladderName(lad)).trim()}` : laneDesc(i + 1);
+    if (hideEmpty && isEmptyLane(i + 1) && !ladderAt(i + 1)) return "";
+    const lad = ladderAt(i + 1), text = lad ? `Ladder: ${(lad.noteText ?? ladderName(lad)).trim()}` : laneDesc(i + 1) || (isEmptyLane(i + 1) ? "empty" : "");
     return text ? `${i + 1}. ${text}` : "";
   }).filter(Boolean);
   // each group on the lowest row where it doesn't overlap another (side-by-side groups share a row)
@@ -1533,19 +1769,22 @@ function drawFigure() {
   const picked = (state.pickMarks || []).flatMap((m, j) => m.map((q) => ({ q, j })));
   const bands = !$("show-bands").checked ? [] : picked.map(({ q, j }) => ({ x0: pairs[j][0], x1: pairs[j][1], y: q.y, name: q.name }));
   const key = !$("show-bands").checked || !$("show-band-key").checked ? [] : picked.map(({ q }) => {
-    const note = (q.ref.note ?? "").trim(), mw = q.kda !== null ? `${fmtKda(q.kda)} kDa` : q.label ? `${q.label} kDa` : "";
+    const note = (q.ref.note ?? "").trim(), mw = q.kda !== null ? `${q.extrapolated ? "~" : ""}${fmtKda(q.kda)} ${unit()}` : q.label ? `${q.label} ${unit()}` : "";
     return { name: q.name, text: note && mw ? `${note} (${mw})` : note || mw };
   });
   const show = { ids: $("show-ids").checked, notes: false, groups: $("show-groups").checked, crowded: $("show-crowded").checked };
   const sizes = $("show-sizes").checked;
-  renderFigure(figCanvas, grey, w, h, sizes ? side(placed[0]) : null, sizes && placed.length > 1 ? side(placed[placed.length - 1]) : null,
-               { lanes, groups, show, list, bands, key });
+  // one ladder: its scale on its own side of the gel (a ladder in the last lanes on the right)
+  const onRight = placed.length === 1 && placed[0].lane > (pairs.length + 1) / 2;
+  const leftSide = sizes && !onRight ? side(placed[0]) : null;
+  const rightSide = sizes ? (onRight ? side(placed[0]) : placed.length > 1 ? side(placed[placed.length - 1]) : null) : null;
+  renderFigure(figCanvas, grey, w, h, leftSide, rightSide, { lanes, groups, show, list, bands, key });
   composeFigure();
   $("figure-note").textContent = placed.length > 2
     ? `${placed.length} ladders: only the leftmost and rightmost are marked on the figure.` : "";
 }
 
-for (const id of ["show-ids", "show-groups", "show-crowded", "show-list", "show-ladder-names", "show-sizes", "show-bands", "show-band-key"]) {
+for (const id of ["show-ids", "show-groups", "show-crowded", "show-list", "show-ladder-names", "show-sizes", "show-bands", "show-band-key", "show-empty"]) {
   $(id).addEventListener("change", () => state.cropImg && drawFigure());
 }
 
@@ -1667,7 +1906,7 @@ $("dl-csv").addEventListener("click", () => {
   // the edit settings go in every row, so a CSV records how it was made
   const edits = [...GEOMETRY.map((k) => value(k)), state.flip, ...TONE.map((k) => value(k))];
   // marked bands and ladder bands; kind/saturated/snr come from the band found at that row (if any)
-  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", "kDa", "kDa_uncertainty", "ladder_size_kDa", "found_or_created", "annotation",
+  const rows = [["band", "lane", "lane_start_col", "lane_end_col", "row", "col", unit(), `${unit()}_uncertainty`, `ladder_size_${unit()}`, "found_or_created", "annotation",
                  "kind", "saturated", "snr", "read_from", ...GEOMETRY, "flip", ...TONE, "invert"]];
   const found = (i, y) => state.results[i].bands.find((b) => Math.abs(b.y - y) <= 1);
   const extra = (b) => (b ? [b.kind, b.saturated, b.snr.toFixed(1)] : ["", "", ""]);
@@ -1713,6 +1952,7 @@ $("invert").addEventListener("click", () => {
   state.invert = !state.invert;
   log("invert", { on: state.invert });
   $("invert").setAttribute("aria-pressed", String(state.invert));
+  syncView();
   applyTone();
 });
 // Flipping moves everything left-right: the area goes back to the whole image and the
@@ -1752,6 +1992,58 @@ drop.addEventListener("drop", (e) => {
 });
 showValues();
 drawIcons();
+
+// ---------- protein or DNA ----------
+
+// What the mode changes on screen: sizes in kDa or kb/bp, and a DNA gel read inverted is
+// shown as photographed (light bands on black)
+function syncView() {
+  const dna = isDna();
+  view.flip = dna && state.invert;
+  view.size = dna ? (k) => (k / 1000).toFixed(k % 100 ? 2 : 1) : (k) => String(k); // DNA ladders in kb, one decimal (3.0, 1.5, 0.5)
+  view.scaleTitle = dna ? "Size (kb)" : "MW (kDa)";
+  view.logTitle = dna ? "Size (kb, log scale)" : "MW (kDa, log scale)";
+  view.logWord = dna ? "size" : "MW";
+}
+
+// Protein (SDS-PAGE, western blot) or DNA (agarose gel). The mode picks the ladders, the
+// method fields and caption, and hides what doesn't apply (antibodies, transfer, protein
+// sample preparation); a DNA photo is read inverted and cropped to the gel on loading.
+function applyMode() {
+  const dna = isDna();
+  localStorage.setItem("gel-ed-mode", state.mode);
+  document.body.dataset.mode = state.mode;
+  $("mode-toggle").checked = dna;
+  // a DNA ladder has 19 sizes, several only a few rows apart: leave out the ones too
+  // close to fit by default rather than stacking them out on longer lines
+  $("show-crowded").checked = !dna;
+  // ladders of the other kind become this mode's default (same lane)
+  for (const [i, lad] of state.ladders.entries()) {
+    if (lad.type !== "custom" && ladderKeys().includes(lad.type)) continue;
+    if (lad.type === "custom" && !lad.sizes.length) continue;
+    state.ladders[i] = { ...newLadder(lad.lane), auto: lad.auto };
+  }
+  syncView();
+  if (state.src && dna && !state.invert && median(state.src.grey.filter((_, i) => i % 97 === 0)) < 0.5) {
+    setupDnaImage();
+    applyGeometry();
+  } else if (state.box) {
+    drawEditor();
+    if (state.results) { assignLadders(); drawResults(); }
+  }
+  drawLadderCards();
+  drawLadderNotes();
+  drawMethod();
+  drawTables();
+  updateCaption();
+}
+$("mode-toggle").addEventListener("change", () => {
+  state.mode = $("mode-toggle").checked ? "dna" : "protein";
+  log("mode", { mode: state.mode });
+  applyMode();
+});
+applyMode();
+requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector(".mode-toggle").classList.add("ready")));
 
 // ?image=<url> loads an image straight away (same-origin; handy for local testing)
 const param = new URLSearchParams(location.search).get("image");

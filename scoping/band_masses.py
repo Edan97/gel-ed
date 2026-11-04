@@ -18,6 +18,9 @@
    ASSUMPTION: the reference lane ran like the ladder. The ladder shares no bands
    with the samples, so this can't be checked on the gel itself.
    Lanes whose match correlation is below --min-corr are flagged as uncertain.
+   The web page doesn't do this step any more: on lanes with few bands (DNA gels) the
+   profile match found false shifts of 30+ rows. It reads each band at its own row off
+   its lane's standard curve (with two ladders, the two blended by lane position).
 5. Uncertainty, in log10(kDa), from three sources:
    - position: each band's sigma_y (band_peaks.find_bands), scaled by the stretch.
    - running correction: after alignment, each lane's clear peaks are paired with the

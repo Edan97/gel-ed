@@ -1,6 +1,6 @@
 // Ladder band picking and mass calibration.
 
-import { gaussian1d, median } from "./signal.js?v=f78e7ddd";
+import { gaussian1d, median } from "./signal.js?v=12a48e35";
 
 // Monotone piecewise-cubic interpolation, scipy.interpolate.PchipInterpolator's formulas
 // (the Python mass calibration uses it). xs strictly increasing. Returns f(x); outside
@@ -72,70 +72,117 @@ export function laneBackground(img, w, h, start, end) {
   return bg;
 }
 
-// Pick which detected bands are the ladder's (sizes in kDa, largest first), returned top
-// to bottom. Fewer candidates than sizes: all of them.
-// 1. Solid peaks only: shoulders and bands less solid than 0.85 go (a smudge with a bright
-//    spot: 0.78 on gel_02; real bands 0.94-1.00), as long as at least as many remain as
-//    there are sizes. If too few remain: the most solid (ties: the stronger), as before.
-// 2. Still too many (gel_04: a well bottom and 15 real bands for 15 sizes): the set whose
-//    spacing fits the sizes best. Down a ladder log10(kDa) changes smoothly with row, so
-//    for each three consecutive picks the slope between the first two and the last two
-//    should be alike: cost (ln of their ratio)^2, plus, for each band left out, its
-//    strength relative to the median candidate (at most 2), so strong bands aren't
-//    skipped to make the spacing look tidier. Dynamic programming over (size, band,
-//    band picked for the size above), so every choice is considered.
-export function pickLadderBands(bands, solidity, sizes) {
+// Pick which detected bands are the ladder's (sizes largest first, e.g. kDa or bp).
+// Returns one entry per size: its band, or null where no band fits (placed by estimate
+// later). As scoping/ladder_pick.py pick_ladder_bands.
+// 1. Solid bands only (solidity 0.85 or more: a smudge with a bright spot scored 0.78
+//    on gel_02, real bands 0.94-1.00); shoulders count, at a cost (a DNA ladder's 0.9,
+//    0.8 and 0.6 kb bands sit on the flanks of the brighter 1.0 and 0.5 kb ones). Fewer
+//    than 3 solid: the most solid, top to bottom.
+// 2. spacingFit: which band, if any, each size goes to.
+export function pickLadderBands(bands, solidity, sizes, mass = null) {
   const n = sizes.length;
   const ranked = bands.map((b, i) => ({ b, s: solidity[i] }))
     .sort((p, q) => (Math.abs(q.s - p.s) > 0.02 ? q.s - p.s : q.b.snr - p.b.snr));
-  const solid = ranked.filter((p) => p.s >= 0.85 && p.b.kind === "peak").map((p) => p.b);
   const byRow = (a) => a.sort((p, q) => p.y - q.y);
-  if (solid.length < n) return byRow(ranked.slice(0, n).map((p) => p.b));
-  const c = byRow(solid);
-  return n < 3 || c.length === n ? c.slice(0, n) : spacingFit(c, sizes);
+  const solid = byRow(ranked.filter((p) => p.s >= 0.85).map((p) => p.b));
+  if (solid.length < 3 || n < 3) {
+    const top = byRow(ranked.slice(0, n).map((p) => p.b));
+    return sizes.map((_, i) => top[i] ?? null);
+  }
+  return spacingFit(solid, sizes, mass).map((k) => (k < 0 ? null : solid[k]));
 }
 
-function spacingFit(c, sizes) {
+const MISS = 3;          // a size with no band (more than leaving out the strongest band, 2)
+const SHOULDER = 2;      // picking a shoulder rather than a peak
+const GAP = 6;           // at most GAP - 1 sizes missing between two picked bands (a tight crop can lose all
+                         // four faint bands between the 1 kb Plus's 1.0 and 0.5 kb)
+const MASS_WEIGHT = 0.1; // brightness against the ladder's masses: a tie-break
+
+// Down a ladder log10(size) changes smoothly with row: for three consecutive picks the
+// slopes between the first two and the last two should be alike, cost (ln of their
+// ratio)^2. Each candidate left out costs its strength relative to the median candidate
+// (at most 2), so strong bands aren't skipped to make the spacing tidier; each size with
+// no band MISS (a well or smudge above the ladder no longer pushes every size down one).
+// With masses (ng per band, e.g. the 1 kb Plus ladder's brighter 3.0, 1.0 and 0.5 kb
+// bands), each pick also costs MASS_WEIGHT x (ln of its brightness, height x width,
+// relative to the rest minus ln of its mass relative to the rest)^2: light, since large
+// DNA bands came out several times fainter than their mass. Dynamic programming over
+// (size, band, size and band picked before it). Returns, per size, a candidate index or -1.
+function spacingFit(c, sizes, mass) {
   const m = c.length, n = sizes.length;
   const lk = sizes.map((k) => Math.log10(k));
   const mid = median(c.map((b) => b.snr)) || 1;
   const cum = [0];
   for (const b of c) cum.push(cum[cum.length - 1] + Math.min(b.snr / mid, 2));
-  const skip = (a, b) => cum[b] - cum[a]; // leaving out candidates a..b-1
-  // cost[i][j][p]: sizes 0..i placed, size i on candidate j, size i-1 on candidate p
-  const idx = (j, p) => j * m + p;
-  let cost = new Float64Array(m * m).fill(Infinity);
-  const back = [];
-  for (let j = 1; j < m; j++) for (let p = 0; p < j; p++) cost[idx(j, p)] = skip(0, p) + skip(p + 1, j);
-  for (let i = 2; i < n; i++) {
-    const next = new Float64Array(m * m).fill(Infinity), from = new Int32Array(m * m).fill(-1);
-    for (let j = i; j < m - (n - 1 - i); j++) {
-      for (let p = i - 1; p < j; p++) {
-        const s2 = (lk[i] - lk[i - 1]) / (c[j].y - c[p].y);
-        for (let q = i - 2; q < p; q++) {
-          const prev = cost[idx(p, q)];
-          if (prev === Infinity) continue;
-          const s1 = (lk[i - 1] - lk[i - 2]) / (c[p].y - c[q].y);
-          const v = prev + Math.log(s2 / s1) ** 2 + skip(p + 1, j);
-          if (v < next[idx(j, p)]) { next[idx(j, p)] = v; from[idx(j, p)] = q; }
+  const skip = (a, b) => (b > a ? cum[b] - cum[a] : 0); // leaving out candidates a..b-1
+  const mc = (i, j) => (c[j].kind === "shoulder" ? SHOULDER : 0) + (massCost ? massCost[i * m + j] : 0);
+  let massCost = null;
+  if (mass && mass.length === n) {
+    const la = c.map((b) => Math.log(Math.max(b.height, 1e-9) * (b.fwhm || 4)));
+    const lm = mass.map((v) => Math.log(v));
+    const top = [...la].sort((a, b) => b - a).slice(0, n);
+    const off = median(top) - median(lm);
+    massCost = new Float64Array(n * m);
+    for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) massCost[i * m + j] = MASS_WEIGHT * (la[j] - lm[i] - off) ** 2;
+  }
+  // C[i][j][g][p]: size i on candidate j, the pick before it size i-g on candidate p
+  const G = GAP + 1;
+  const at = (i, j, g, p) => ((i * m + j) * G + g) * m + p;
+  const C = new Float64Array(n * m * G * m).fill(Infinity);
+  const B = new Int32Array(n * m * G * m).fill(-1); // best (g2 * m + q) before it, -1 = first pick
+  for (let i = 0; i < n; i++) {
+    for (let g = 1; g <= GAP && i - g >= 0; g++) {
+      const ip = i - g;
+      for (let j = 0; j < m; j++) {
+        for (let p = 0; p < j; p++) {
+          let best = MISS * ip + skip(0, p) + mc(ip, p), from = -1;
+          if (ip > 0) {
+            const s2 = (lk[i] - lk[ip]) / (c[j].y - c[p].y);
+            for (let g2 = 1; g2 <= GAP && ip - g2 >= 0; g2++) {
+              const iq = ip - g2;
+              for (let q = 0; q < p; q++) {
+                const prev = C[at(ip, p, g2, q)];
+                if (prev === Infinity) continue;
+                const s1 = (lk[ip] - lk[iq]) / (c[p].y - c[q].y);
+                const v = prev + Math.log(s2 / s1) ** 2;
+                if (v < best) { best = v; from = g2 * m + q; }
+              }
+            }
+          }
+          C[at(i, j, g, p)] = best + skip(p + 1, j) + MISS * (g - 1) + mc(i, j);
+          B[at(i, j, g, p)] = from;
         }
       }
     }
-    cost = next;
-    back.push(from);
   }
-  let best = Infinity, bj = -1, bp = -1;
-  for (let j = 1; j < m; j++) for (let p = 0; p < j; p++) {
-    const v = cost[idx(j, p)] + skip(j + 1, m);
-    if (v < best) { best = v; bj = j; bp = p; }
+  let best = Infinity, end = null;
+  for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) for (let g = 1; g <= GAP; g++) for (let p = 0; p < j; p++) {
+    const v = C[at(i, j, g, p)] + MISS * (n - 1 - i) + skip(j + 1, m);
+    if (v < best) { best = v; end = [i, j, g, p]; }
   }
-  const out = [bj, bp];
-  for (let i = n - 1; i >= 2; i--) {
-    const q = back[i - 2][idx(bj, bp)];
-    out.push(q);
-    bj = bp; bp = q;
+  const out = new Array(n).fill(-1);
+  if (!end) return out;
+  let [i, j, g, p] = end;
+  for (;;) {
+    out[i] = j;
+    out[i - g] = p;
+    const from = B[at(i, j, g, p)];
+    if (from < 0) break;
+    [i, j, g, p] = [i - g, p, Math.floor(from / m), from % m];
   }
-  return out.reverse().map((k) => c[k]);
+  return out;
+}
+
+// Rows in the top quarter where at least 80% of lanes (and 3) have a peak: wells, the
+// stacking line, the gel's top edge, not ladder bands. [{y, tol}]. As ladder_pick.py.
+export function commonRows(laneBands, h) {
+  const tol = Math.max(4, Math.round(0.01 * h));
+  const peaks = laneBands.map((bs) => bs.filter((b) => b.kind === "peak").map((b) => b.y));
+  const need = Math.max(3, Math.ceil(0.8 * laneBands.length));
+  const rows = [...new Set(peaks.flat().filter((y) => y < h / 4))].sort((a, b) => a - b);
+  return rows.filter((r) => peaks.filter((ys) => ys.some((y) => Math.abs(y - r) <= tol)).length >= need)
+    .map((y) => ({ y, tol }));
 }
 
 // Calibration uncertainty, as scoping/band_masses.py: leave each interior ladder band out,
